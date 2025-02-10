@@ -48,6 +48,202 @@ GET /api/lists/{slug}/activity
 - Admin with autocomplete for villager selection
 - Images served via GitHub raw URLs (external dependency)
 
+## In Progress
+
+### IronMON Profile (Synthform Integration)
+
+**Priority: HIGH** - First integration between Questlog and Synthform. Data export already completed.
+
+IronMON is a Pokemon ROM hack challenge mode. Synthform currently stores run data, but Questlog should be the source of truth for historical tracking. Synthform will become a real-time relay that forwards events to Questlog.
+
+**Data already exported:** `data/ironmon_export.json` (24,826 lines)
+- 2 Challenges (Kaizo, Super Kaizo)
+- 23 Checkpoints (Rival battles, gym leaders, E4, Champion)
+- 2,236 Seeds (individual run attempts)
+- 992 Results (checkpoint pass/fail records)
+
+#### Models to Create
+
+Create `apps/profiles/ironmon/`:
+
+```python
+# models.py
+
+class ROMHack(models.Model):
+    """The ROM hack variant (maps to Synthform's Challenge)."""
+    slug = models.SlugField(unique=True)
+    name = models.TextField()  # "Kaizo", "Super Kaizo"
+    base_game = models.TextField()  # "FireRed"
+    edition = models.ForeignKey(
+        "library.Edition", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="ironmon_hacks"
+    )
+
+
+class Checkpoint(models.Model):
+    """A checkpoint within a ROM hack."""
+    rom_hack = models.ForeignKey(ROMHack, on_delete=models.CASCADE, related_name="checkpoints")
+    name = models.TextField()  # "Brock", "Rival 3", "Champion"
+    trainer = models.TextField()
+    order = models.IntegerField()
+
+    class Meta:
+        ordering = ["order"]
+        unique_together = ["rom_hack", "order"]
+
+
+class Run(models.Model):
+    """A single IronMON attempt (maps to Synthform's Seed)."""
+    seed_number = models.IntegerField(primary_key=True)  # Comes from IronMON plugin
+    rom_hack = models.ForeignKey(ROMHack, on_delete=models.CASCADE, related_name="runs")
+    started_at = models.DateTimeField(auto_now_add=True)
+
+    # Denormalized for quick queries
+    highest_checkpoint = models.ForeignKey(
+        Checkpoint, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+"
+    )
+    is_victory = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ["-seed_number"]
+
+
+class CheckpointResult(models.Model):
+    """Result of a checkpoint attempt (maps to Synthform's Result)."""
+    run = models.ForeignKey(Run, on_delete=models.CASCADE, related_name="results")
+    checkpoint = models.ForeignKey(Checkpoint, on_delete=models.CASCADE, related_name="results")
+    cleared = models.BooleanField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["run", "checkpoint"]
+        ordering = ["checkpoint__order"]
+```
+
+#### Import Script
+
+Create `data/import_ironmon.py`:
+
+```python
+"""
+Import IronMON data from Synthform export.
+
+Usage: python data/import_ironmon.py
+
+Reads: data/ironmon_export.json (Django dumpdata format)
+Maps:
+  - ironmon.challenge → ROMHack
+  - ironmon.checkpoint → Checkpoint
+  - ironmon.seed → Run
+  - ironmon.result → CheckpointResult
+"""
+import json
+import os
+import sys
+
+import django
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+sys.path.insert(0, str(Path(__file__).parent.parent))
+django.setup()
+
+from apps.profiles.ironmon.models import ROMHack, Checkpoint, Run, CheckpointResult
+
+
+def import_ironmon():
+    with open("data/ironmon_export.json") as f:
+        data = json.load(f)
+
+    # Group by model type
+    challenges = [d for d in data if d["model"] == "ironmon.challenge"]
+    checkpoints = [d for d in data if d["model"] == "ironmon.checkpoint"]
+    seeds = [d for d in data if d["model"] == "ironmon.seed"]
+    results = [d for d in data if d["model"] == "ironmon.result"]
+
+    # Map old PKs to new objects
+    challenge_map = {}
+    checkpoint_map = {}
+
+    # Import challenges → ROMHack
+    for c in challenges:
+        rom_hack, _ = ROMHack.objects.get_or_create(
+            slug=c["fields"]["name"].lower().replace(" ", "-"),
+            defaults={"name": c["fields"]["name"], "base_game": "FireRed"}
+        )
+        challenge_map[c["pk"]] = rom_hack
+
+    # Import checkpoints
+    for cp in checkpoints:
+        checkpoint, _ = Checkpoint.objects.get_or_create(
+            rom_hack=challenge_map[cp["fields"]["challenge"]],
+            order=cp["fields"]["order"],
+            defaults={
+                "name": cp["fields"]["name"],
+                "trainer": cp["fields"]["trainer"],
+            }
+        )
+        checkpoint_map[cp["pk"]] = checkpoint
+
+    # Import seeds → Run (bulk for performance)
+    runs_to_create = []
+    for s in seeds:
+        runs_to_create.append(Run(
+            seed_number=s["pk"],
+            rom_hack=challenge_map[s["fields"]["challenge"]],
+        ))
+    Run.objects.bulk_create(runs_to_create, ignore_conflicts=True)
+
+    # Import results (bulk)
+    results_to_create = []
+    for r in results:
+        results_to_create.append(CheckpointResult(
+            run_id=r["fields"]["seed"],
+            checkpoint=checkpoint_map[r["fields"]["checkpoint"]],
+            cleared=r["fields"]["result"],
+        ))
+    CheckpointResult.objects.bulk_create(results_to_create, ignore_conflicts=True)
+
+    # Update denormalized fields
+    for run in Run.objects.prefetch_related("results__checkpoint"):
+        cleared = run.results.filter(cleared=True).order_by("-checkpoint__order").first()
+        if cleared:
+            run.highest_checkpoint = cleared.checkpoint
+            run.is_victory = cleared.checkpoint.order == 23  # Champion
+            run.save(update_fields=["highest_checkpoint", "is_victory"])
+
+
+if __name__ == "__main__":
+    import_ironmon()
+```
+
+#### API Endpoints
+
+```python
+# api.py
+router = Router(tags=["IronMON"])
+
+@router.get("/stats")
+def get_stats(request, rom_hack: str = None):
+    """Aggregate stats: total seeds, victories, clear rates per checkpoint."""
+
+@router.get("/runs")
+def list_runs(request, limit: int = 50):
+    """Recent runs with highest checkpoint reached."""
+
+@router.get("/checkpoints/stats")
+def checkpoint_stats(request, rom_hack: str = None):
+    """Clear rates per checkpoint - the 'wall' chart."""
+```
+
+#### Synthform Integration (Phase 2)
+
+After import, update Synthform to:
+1. Remove local IronMON models
+2. Publish events to Redis `events:questlog` channel on checkpoint results
+3. Query Questlog API for overlay stats display
+
+See CLAUDE.md "WebSocket Support for Synthform Integration" section for Redis pub/sub pattern.
+
 ## Planned Features
 
 ### ACNH Local Image Storage

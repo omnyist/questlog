@@ -177,3 +177,264 @@ Development: `docker compose up`
 - **Omnyist** (`multiverse/apps/omnyist.com`): Consumes Questlog API for game data
 
 Questlog provides data. Omnyist provides editorial and tools that reference that data.
+
+## WebSocket Support for Synthform Integration
+
+Questlog needs WebSocket support so Synthform's overlay system can subscribe to real-time events. This enables streaming overlays to react to gaming data changes (playthrough completions, list updates, hunt encounters, etc.).
+
+### Architecture Overview
+
+Synthform uses Redis pub/sub for event distribution. The pattern:
+1. Questlog publishes events to Redis channels when data changes
+2. Synthform's `OverlayConsumer` subscribes to those channels
+3. Events flow to React overlays in real-time
+
+### Required Dependencies
+
+Add to `pyproject.toml`:
+```toml
+"channels[daphne]>=4.3.2",
+"channels-redis>=4.2.0",
+```
+
+### Settings Changes
+
+Add to `config/settings.py`:
+```python
+INSTALLED_APPS = [
+    "daphne",  # Add before django.contrib.staticfiles
+    # ... existing apps
+]
+
+# Channels
+ASGI_APPLICATION = "config.asgi.application"
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [REDIS_URL],
+        },
+    },
+}
+```
+
+### ASGI Configuration
+
+Update `config/asgi.py` to match Synthform's pattern:
+```python
+from __future__ import annotations
+
+import os
+
+import django
+from channels.routing import ProtocolTypeRouter
+from channels.routing import URLRouter
+from django.core.asgi import get_asgi_application
+from django.urls import path
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+django.setup()
+
+# Import consumers after Django setup
+from apps.realtime.consumers import QuestlogConsumer  # noqa: E402
+
+django_asgi_app = get_asgi_application()
+
+websocket_urlpatterns = [
+    path("ws/questlog/", QuestlogConsumer.as_asgi()),
+]
+
+application = ProtocolTypeRouter(
+    {
+        "http": django_asgi_app,
+        "websocket": URLRouter(websocket_urlpatterns),
+    }
+)
+```
+
+### Create Realtime App
+
+Create `apps/realtime/` with:
+
+**`apps/realtime/consumers.py`**:
+```python
+from __future__ import annotations
+
+import json
+import logging
+
+from channels.generic.websocket import AsyncWebsocketConsumer
+
+logger = logging.getLogger(__name__)
+
+
+class QuestlogConsumer(AsyncWebsocketConsumer):
+    """WebSocket consumer for Questlog events.
+
+    Synthform connects here to receive real-time updates about:
+    - Playthrough completions
+    - List changes
+    - ACNH hunt encounters
+    - Profile syncs
+    """
+
+    async def connect(self):
+        await self.channel_layer.group_add("questlog_events", self.channel_name)
+        await self.accept()
+        logger.info("Questlog WebSocket connected")
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard("questlog_events", self.channel_name)
+        logger.info(f"Questlog WebSocket disconnected: {close_code}")
+
+    async def questlog_event(self, event):
+        """Handle events broadcast to the questlog_events group."""
+        await self.send(text_data=json.dumps(event["data"]))
+```
+
+**`apps/realtime/events.py`** - Event publishing helper:
+```python
+from __future__ import annotations
+
+import json
+import logging
+from datetime import datetime
+
+import redis.asyncio as redis
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
+
+# Redis client for publishing (sync context)
+_redis_client = None
+
+
+def get_redis_client():
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = redis.from_url(settings.REDIS_URL)
+    return _redis_client
+
+
+async def publish_event(event_type: str, payload: dict):
+    """Publish an event to Redis for Synthform to consume.
+
+    Event types:
+    - questlog:playthrough_complete
+    - questlog:list_updated
+    - questlog:hunt_encounter
+    - questlog:profile_synced
+    """
+    client = get_redis_client()
+    message = {
+        "type": event_type,
+        "payload": payload,
+        "timestamp": datetime.now().isoformat(),
+    }
+    await client.publish("events:questlog", json.dumps(message))
+    logger.debug(f"Published {event_type}: {payload}")
+
+
+def publish_event_sync(event_type: str, payload: dict):
+    """Synchronous version for use in Django signals/model saves."""
+    import redis as sync_redis
+
+    client = sync_redis.from_url(settings.REDIS_URL)
+    message = {
+        "type": event_type,
+        "payload": payload,
+        "timestamp": datetime.now().isoformat(),
+    }
+    client.publish("events:questlog", json.dumps(message))
+    logger.debug(f"Published {event_type}: {payload}")
+```
+
+### Event Triggers
+
+Add signals or override model `save()` methods to publish events:
+
+**Playthrough completion** (`apps/journal/signals.py`):
+```python
+from django.db.models.signals import post_save
+from django.dispatch import receiver
+
+from apps.journal.models import Playthrough
+from apps.realtime.events import publish_event_sync
+
+
+@receiver(post_save, sender=Playthrough)
+def on_playthrough_save(sender, instance, created, **kwargs):
+    if instance.completed_at:
+        publish_event_sync("questlog:playthrough_complete", {
+            "work": instance.edition.work.name,
+            "edition": instance.edition.name,
+            "platform": instance.platform,
+            "playtime_hours": instance.playtime_hours,
+            "rating": instance.rating,
+        })
+```
+
+**ACNH hunt encounter** (`apps/profiles/acnh/signals.py`):
+```python
+@receiver(post_save, sender=HuntEncounter)
+def on_hunt_encounter(sender, instance, created, **kwargs):
+    if created:
+        publish_event_sync("questlog:hunt_encounter", {
+            "villager": instance.villager.name,
+            "personality": instance.villager.personality,
+            "species": instance.villager.species,
+            "icon_url": instance.villager.icon_url,
+            "encounter_number": instance.hunt.encounters.count(),
+            "is_target": instance.villager == instance.hunt.target_villager,
+        })
+```
+
+### Synthform Integration
+
+Synthform needs to subscribe to `events:questlog` Redis channel. In `synthform/overlays/consumers.py`, add:
+
+```python
+# In OverlayConsumer.connect():
+await self.subscribe_to_redis("events:questlog")
+
+# Add handler for questlog events:
+async def handle_questlog_event(self, message: dict):
+    event_type = message.get("type", "")
+    payload = message.get("payload", {})
+
+    if event_type == "questlog:playthrough_complete":
+        # Could trigger a celebration overlay
+        await self.send_layer_message("alerts", "push", {
+            "type": "game_complete",
+            "data": payload,
+        })
+    elif event_type == "questlog:hunt_encounter":
+        # Update ACNH hunt overlay
+        await self.send_layer_message("games", "acnh_encounter", payload)
+```
+
+### Redis Channel
+
+Questlog publishes to: `events:questlog`
+
+Message format:
+```json
+{
+  "type": "questlog:playthrough_complete",
+  "payload": {
+    "work": "Final Fantasy VII Rebirth",
+    "edition": "PS5",
+    "platform": "PlayStation 5",
+    "playtime_hours": 87,
+    "rating": 5
+  },
+  "timestamp": "2025-02-11T12:34:56.789Z"
+}
+```
+
+### Testing the Integration
+
+1. Start both services (questlog on 7176, synthform on 7175)
+2. Connect to questlog WebSocket: `ws://localhost:7176/ws/questlog/`
+3. Trigger an event (complete a playthrough via admin or API)
+4. Verify event appears in Synthform's overlay
