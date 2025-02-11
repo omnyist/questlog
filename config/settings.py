@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     "apps.profiles.poe",
     "apps.profiles.umamusume",
     "apps.profiles.acnh",
+    "apps.profiles.ironmon",
 ]
 
 MIDDLEWARE = [
