@@ -69,33 +69,32 @@ Create `apps/profiles/ironmon/`:
 ```python
 # models.py
 
-class ROMHack(models.Model):
-    """The ROM hack variant (maps to Synthform's Challenge)."""
+class Challenge(models.Model):
+    """The challenge ruleset (Kaizo, Super Kaizo, Ultimate, etc.)."""
     slug = models.SlugField(unique=True)
     name = models.TextField()  # "Kaizo", "Super Kaizo"
-    base_game = models.TextField()  # "FireRed"
     edition = models.ForeignKey(
         "library.Edition", null=True, blank=True,
-        on_delete=models.SET_NULL, related_name="ironmon_hacks"
+        on_delete=models.SET_NULL, related_name="ironmon_challenges"
     )
 
 
 class Checkpoint(models.Model):
-    """A checkpoint within a ROM hack."""
-    rom_hack = models.ForeignKey(ROMHack, on_delete=models.CASCADE, related_name="checkpoints")
+    """A checkpoint within a challenge (gym leaders, rival battles, E4, etc.)."""
+    challenge = models.ForeignKey(Challenge, on_delete=models.CASCADE, related_name="checkpoints")
     name = models.TextField()  # "Brock", "Rival 3", "Champion"
     trainer = models.TextField()
     order = models.IntegerField()
 
     class Meta:
         ordering = ["order"]
-        unique_together = ["rom_hack", "order"]
+        unique_together = ["challenge", "order"]
 
 
 class Run(models.Model):
     """A single IronMON attempt (maps to Synthform's Seed)."""
     seed_number = models.IntegerField(primary_key=True)  # Comes from IronMON plugin
-    rom_hack = models.ForeignKey(ROMHack, on_delete=models.CASCADE, related_name="runs")
+    challenge = models.ForeignKey(Challenge, on_delete=models.CASCADE, related_name="runs")
     started_at = models.DateTimeField(auto_now_add=True)
 
     # Denormalized for quick queries
@@ -133,7 +132,7 @@ Usage: python data/import_ironmon.py
 
 Reads: data/ironmon_export.json (Django dumpdata format)
 Maps:
-  - ironmon.challenge → ROMHack
+  - ironmon.challenge → Challenge
   - ironmon.checkpoint → Checkpoint
   - ironmon.seed → Run
   - ironmon.result → CheckpointResult
@@ -147,7 +146,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
 sys.path.insert(0, str(Path(__file__).parent.parent))
 django.setup()
 
-from apps.profiles.ironmon.models import ROMHack, Checkpoint, Run, CheckpointResult
+from apps.profiles.ironmon.models import Challenge, Checkpoint, Run, CheckpointResult
 
 
 def import_ironmon():
@@ -164,18 +163,18 @@ def import_ironmon():
     challenge_map = {}
     checkpoint_map = {}
 
-    # Import challenges → ROMHack
+    # Import challenges → Challenge
     for c in challenges:
-        rom_hack, _ = ROMHack.objects.get_or_create(
+        challenge, _ = Challenge.objects.get_or_create(
             slug=c["fields"]["name"].lower().replace(" ", "-"),
-            defaults={"name": c["fields"]["name"], "base_game": "FireRed"}
+            defaults={"name": c["fields"]["name"]}
         )
-        challenge_map[c["pk"]] = rom_hack
+        challenge_map[c["pk"]] = challenge
 
     # Import checkpoints
     for cp in checkpoints:
         checkpoint, _ = Checkpoint.objects.get_or_create(
-            rom_hack=challenge_map[cp["fields"]["challenge"]],
+            challenge=challenge_map[cp["fields"]["challenge"]],
             order=cp["fields"]["order"],
             defaults={
                 "name": cp["fields"]["name"],
@@ -189,7 +188,7 @@ def import_ironmon():
     for s in seeds:
         runs_to_create.append(Run(
             seed_number=s["pk"],
-            rom_hack=challenge_map[s["fields"]["challenge"]],
+            challenge=challenge_map[s["fields"]["challenge"]],
         ))
     Run.objects.bulk_create(runs_to_create, ignore_conflicts=True)
 
@@ -222,16 +221,16 @@ if __name__ == "__main__":
 # api.py
 router = Router(tags=["IronMON"])
 
-@router.get("/stats")
-def get_stats(request, rom_hack: str = None):
+@router.get("/ironmon/stats")
+def get_stats(request, challenge: str = None):
     """Aggregate stats: total seeds, victories, clear rates per checkpoint."""
 
-@router.get("/runs")
-def list_runs(request, limit: int = 50):
+@router.get("/ironmon/runs")
+def list_runs(request, challenge: str = None, limit: int = 50):
     """Recent runs with highest checkpoint reached."""
 
-@router.get("/checkpoints/stats")
-def checkpoint_stats(request, rom_hack: str = None):
+@router.get("/ironmon/checkpoints/stats")
+def checkpoint_stats(request, challenge: str = None):
     """Clear rates per checkpoint - the 'wall' chart."""
 ```
 
