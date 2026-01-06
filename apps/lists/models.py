@@ -1,0 +1,53 @@
+from __future__ import annotations
+
+import uuid
+
+from django.db import models
+
+
+class List(models.Model):
+    """A curated collection of games - 'Top 25', 'RPGs Beaten', etc."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    slug = models.SlugField(unique=True, max_length=255)
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    is_ranked = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class Entry(models.Model):
+    """A game's membership in a list."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    list = models.ForeignKey(
+        List,
+        on_delete=models.CASCADE,
+        related_name="entries",
+    )
+    game = models.ForeignKey(
+        "library.Game",
+        on_delete=models.CASCADE,
+        related_name="list_entries",
+    )
+    position = models.IntegerField(null=True, blank=True)
+    notes = models.TextField(blank=True)
+
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ["list", "game"]
+        ordering = ["position", "-added_at"]
+        verbose_name_plural = "entries"
+
+    def __str__(self):
+        pos = f"#{self.position} " if self.position else ""
+        return f"{pos}{self.game.name} in {self.list.name}"
