@@ -1,0 +1,50 @@
+name: Deploy to OrbStack
+
+on:
+  push:
+    branches: [ main ]
+
+env:
+  DEBUG: False
+  ALLOWED_HOSTS: "*"
+  DATABASE_URL: postgresql://questlog:questlog@db:5432/questlog
+  REDIS_URL: redis://redis:6379/0
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 10
+
+    - name: Create production .env file
+      run: |
+        cat > .env << EOF
+        DEBUG=${{ env.DEBUG }}
+        SECRET_KEY=${{ secrets.SECRET_KEY }}
+        ALLOWED_HOSTS=${{ env.ALLOWED_HOSTS }}
+        DATABASE_URL=${{ env.DATABASE_URL }}
+        REDIS_URL=${{ env.REDIS_URL }}
+        TWITCH_CLIENT_ID=${{ vars.TWITCH_CLIENT_ID }}
+        TWITCH_CLIENT_SECRET=${{ secrets.TWITCH_CLIENT_SECRET }}
+        EOF
+
+    - name: Deploy containers
+      run: |
+        docker compose -f docker-compose.prod.yml up --build --force-recreate -d --remove-orphans
+
+    - name: Wait for services to be ready
+      run: |
+        timeout 60 sh -c 'until docker compose -f docker-compose.prod.yml exec -T db pg_isready -U questlog -d questlog; do sleep 1; done'
+        sleep 5
+
+    - name: Collect static files
+      run: |
+        docker compose -f docker-compose.prod.yml exec -T server uv run python manage.py collectstatic --noinput
+
+    - name: Clean up old Docker images
+      run: |
+        docker image prune -f
