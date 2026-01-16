@@ -1,0 +1,42 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: questlog
+      POSTGRES_USER: questlog
+      POSTGRES_PASSWORD: questlog
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+
+  redis:
+    image: redis:alpine
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - db
+      - redis
+    environment:
+      - DATABASE_URL=postgresql://questlog:questlog@db:5432/questlog
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "7176:7176"
+    command: >
+      sh -c "uv run python manage.py migrate &&
+             uv run daphne -b 0.0.0.0 -p 7176 config.asgi:application"
+
+volumes:
+  postgres_data:
+  redis_data:
