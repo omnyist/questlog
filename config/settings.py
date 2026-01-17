@@ -23,6 +23,9 @@ DEBUG = env("DEBUG")
 
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
+# CSRF trusted origins (for Cloudflare proxy)
+CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["https://questlog.omnyist.com"])
+
 # Application definition
 INSTALLED_APPS = [
     "django.contrib.admin",
