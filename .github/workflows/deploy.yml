@@ -6,7 +6,7 @@ on:
 
 env:
   DEBUG: False
-  ALLOWED_HOSTS: "*"
+  ALLOWED_HOSTS: "questlog.omnyist.com,localhost"
   DATABASE_URL: postgresql://questlog:questlog@db:5432/questlog
   REDIS_URL: redis://redis:6379/0
 
