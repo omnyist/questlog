@@ -28,6 +28,8 @@ services:
     depends_on:
       - db
       - redis
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql://questlog:questlog@db:5432/questlog
       - REDIS_URL=redis://redis:6379/0
