@@ -5,6 +5,7 @@ from django.urls import path
 from ninja import NinjaAPI
 
 from apps.integrations.api import router as integrations_router
+from apps.library.api import router as library_router
 
 api = NinjaAPI(
     title="Questlog API",
@@ -13,6 +14,7 @@ api = NinjaAPI(
 )
 
 api.add_router("/", integrations_router)
+api.add_router("/", library_router)
 
 # Import and register routers here as they're created
 # from apps.library.api import router as library_router

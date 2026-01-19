@@ -68,3 +68,9 @@ coverage.xml
 
 # ruff
 .ruff_cache/
+
+# Claude
+.claude/
+
+# Data import generated files
+data/*.json
