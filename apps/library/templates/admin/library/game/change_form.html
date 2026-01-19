@@ -121,6 +121,9 @@
   const searchBtn = document.getElementById('igdb-search-btn');
   const resultsContainer = document.getElementById('igdb-results');
 
+  // Store search results for click handling (avoids JSON-in-HTML issues)
+  let searchResults = [];
+
   async function searchIGDB(query) {
     resultsContainer.innerHTML = '<div class="igdb-loading">Searching IGDB...</div>';
 
@@ -133,11 +136,13 @@
         return;
       }
 
-      resultsContainer.innerHTML = data.results.map(game => `
-        <div class="igdb-result" data-game='${JSON.stringify(game)}'>
-          <img src="${game.cover_url || '/static/admin/img/icon-no.svg'}" alt="${game.name}">
+      searchResults = data.results;
+
+      resultsContainer.innerHTML = data.results.map((game, index) => `
+        <div class="igdb-result" data-index="${index}">
+          <img src="${game.cover_url || '/static/admin/img/icon-no.svg'}" alt="">
           <div class="igdb-result-info">
-            <h4>${game.name}</h4>
+            <h4>${escapeHtml(game.name)}</h4>
             <p>${game.release_date || 'Unknown release date'}</p>
             <p style="font-size: 11px; color: #999;">IGDB ID: ${game.igdb_id}</p>
           </div>
@@ -147,13 +152,19 @@
       // Add click handlers
       document.querySelectorAll('.igdb-result').forEach(el => {
         el.addEventListener('click', () => {
-          const game = JSON.parse(el.dataset.game);
-          populateForm(game);
+          const index = parseInt(el.dataset.index, 10);
+          populateForm(searchResults[index]);
         });
       });
     } catch (error) {
       resultsContainer.innerHTML = `<p>Error: ${error.message}</p>`;
     }
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   function populateForm(game) {
