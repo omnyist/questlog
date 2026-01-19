@@ -176,6 +176,7 @@
       'id_cover_url': game.cover_url || '',
       'id_release_date': game.release_date || '',
       'id_summary': game.summary || '',
+      'id_igdb_data': game.igdb_data ? JSON.stringify(game.igdb_data, null, 2) : '',
     };
 
     for (const [fieldId, value] of Object.entries(fields)) {

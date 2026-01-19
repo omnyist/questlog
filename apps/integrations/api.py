@@ -15,6 +15,7 @@ class IGDBGameSchema(Schema):
     cover_url: str | None = None
     release_date: str | None = None
     summary: str | None = None
+    igdb_data: dict | None = None
 
 
 class IGDBSearchResponse(Schema):
@@ -49,6 +50,7 @@ async def search_igdb(request, q: str, limit: int = 10):
                 cover_url=cover_url,
                 release_date=release_date,
                 summary=game.get("summary", ""),
+                igdb_data=game,
             )
         )
 
