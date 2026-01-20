@@ -6,7 +6,7 @@ from django.db import models
 
 
 class List(models.Model):
-    """A curated collection of games - 'Top 25', 'RPGs Beaten', etc."""
+    """A curated collection of Works - 'Top 25 RPGs', 'FF Favorites', etc."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     slug = models.SlugField(unique=True, max_length=255)
@@ -25,7 +25,7 @@ class List(models.Model):
 
 
 class Entry(models.Model):
-    """A game's membership in a list."""
+    """A Work's membership in a list."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     list = models.ForeignKey(
@@ -33,8 +33,8 @@ class Entry(models.Model):
         on_delete=models.CASCADE,
         related_name="entries",
     )
-    game = models.ForeignKey(
-        "library.Game",
+    work = models.ForeignKey(
+        "library.Work",
         on_delete=models.CASCADE,
         related_name="list_entries",
     )
@@ -44,10 +44,10 @@ class Entry(models.Model):
     added_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ["list", "game"]
+        unique_together = ["list", "work"]
         ordering = ["position", "-added_at"]
         verbose_name_plural = "entries"
 
     def __str__(self):
         pos = f"#{self.position} " if self.position else ""
-        return f"{pos}{self.game.name} in {self.list.name}"
+        return f"{pos}{self.work.name} in {self.list.name}"

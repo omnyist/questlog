@@ -3,153 +3,194 @@ from __future__ import annotations
 from datetime import datetime
 
 from django.db import IntegrityError
-from ninja import Router
-from ninja import Schema
+from ninja import Router, Schema
 
-from .models import Game
+from .models import Edition, Franchise, Work
 
 router = Router(tags=["library"])
 
 
-class GameSchema(Schema):
+# Schemas
+class FranchiseSchema(Schema):
     id: str
-    igdb_id: int | None
-    slug: str
     name: str
-    cover_url: str | None
-    release_date: str | None
-    summary: str | None
+    slug: str
 
 
-class GameCreateSchema(Schema):
+class WorkSchema(Schema):
+    id: str
+    name: str
+    slug: str
+    franchise: FranchiseSchema | None = None
+    original_release_year: int | None = None
+
+
+class EditionSchema(Schema):
+    id: str
+    work_id: str
+    name: str
+    slug: str
+    edition_type: str
     igdb_id: int | None = None
-    slug: str
-    name: str
     cover_url: str | None = None
     release_date: str | None = None
     summary: str | None = None
-    igdb_data: dict | None = None
 
 
-class BulkImportGameSchema(Schema):
-    igdb_id: int | None = None
-    slug: str
+class WorkDetailSchema(Schema):
+    id: str
     name: str
+    slug: str
+    franchise: FranchiseSchema | None = None
+    original_release_year: int | None = None
+    editions: list[EditionSchema] = []
+
+
+class EditionCreateSchema(Schema):
+    work_id: str
+    name: str
+    slug: str
+    edition_type: str = "original"
+    igdb_id: int | None = None
     cover_url: str | None = None
     release_date: str | None = None
     summary: str | None = None
+    platforms: list[str] | None = None
     igdb_data: dict | None = None
 
 
-class BulkImportRequest(Schema):
-    games: list[BulkImportGameSchema]
-
-
-class BulkImportResult(Schema):
-    created: int
-    skipped: int
-    errors: list[str]
-
-
-@router.get("/games", response=list[GameSchema])
-def list_games(request, limit: int = 100, offset: int = 0):
-    """List all games in the library."""
-    games = Game.objects.all()[offset : offset + limit]
+# Franchise endpoints
+@router.get("/franchises", response=list[FranchiseSchema])
+def list_franchises(request):
+    """List all franchises."""
     return [
-        GameSchema(
-            id=str(g.id),
-            igdb_id=g.igdb_id,
-            slug=g.slug,
-            name=g.name,
-            cover_url=g.cover_url or None,
-            release_date=g.release_date.isoformat() if g.release_date else None,
-            summary=g.summary or None,
-        )
-        for g in games
+        FranchiseSchema(id=str(f.id), name=f.name, slug=f.slug)
+        for f in Franchise.objects.all()
     ]
 
 
-@router.get("/games/{slug}", response=GameSchema)
-def get_game(request, slug: str):
-    """Get a single game by slug."""
-    g = Game.objects.get(slug=slug)
-    return GameSchema(
-        id=str(g.id),
-        igdb_id=g.igdb_id,
-        slug=g.slug,
-        name=g.name,
-        cover_url=g.cover_url or None,
-        release_date=g.release_date.isoformat() if g.release_date else None,
-        summary=g.summary or None,
+# Work endpoints
+@router.get("/works", response=list[WorkSchema])
+def list_works(request, franchise: str | None = None, limit: int = 100, offset: int = 0):
+    """List all works, optionally filtered by franchise slug."""
+    qs = Work.objects.select_related("franchise")
+    if franchise:
+        qs = qs.filter(franchise__slug=franchise)
+    works = qs[offset : offset + limit]
+    return [
+        WorkSchema(
+            id=str(w.id),
+            name=w.name,
+            slug=w.slug,
+            franchise=FranchiseSchema(
+                id=str(w.franchise.id), name=w.franchise.name, slug=w.franchise.slug
+            ) if w.franchise else None,
+            original_release_year=w.original_release_year,
+        )
+        for w in works
+    ]
+
+
+@router.get("/works/{slug}", response=WorkDetailSchema)
+def get_work(request, slug: str):
+    """Get a single work with all its editions."""
+    w = Work.objects.select_related("franchise").prefetch_related("editions").get(slug=slug)
+    return WorkDetailSchema(
+        id=str(w.id),
+        name=w.name,
+        slug=w.slug,
+        franchise=FranchiseSchema(
+            id=str(w.franchise.id), name=w.franchise.name, slug=w.franchise.slug
+        ) if w.franchise else None,
+        original_release_year=w.original_release_year,
+        editions=[
+            EditionSchema(
+                id=str(e.id),
+                work_id=str(e.work_id),
+                name=e.name,
+                slug=e.slug,
+                edition_type=e.edition_type,
+                igdb_id=e.igdb_id,
+                cover_url=e.cover_url or None,
+                release_date=e.release_date.isoformat() if e.release_date else None,
+                summary=e.summary or None,
+            )
+            for e in w.editions.all()
+        ],
     )
 
 
-@router.post("/games", response=GameSchema)
-def create_game(request, data: GameCreateSchema):
-    """Create a new game."""
+# Edition endpoints
+@router.get("/editions", response=list[EditionSchema])
+def list_editions(request, work: str | None = None, limit: int = 100, offset: int = 0):
+    """List all editions, optionally filtered by work slug."""
+    qs = Edition.objects.select_related("work")
+    if work:
+        qs = qs.filter(work__slug=work)
+    editions = qs[offset : offset + limit]
+    return [
+        EditionSchema(
+            id=str(e.id),
+            work_id=str(e.work_id),
+            name=e.name,
+            slug=e.slug,
+            edition_type=e.edition_type,
+            igdb_id=e.igdb_id,
+            cover_url=e.cover_url or None,
+            release_date=e.release_date.isoformat() if e.release_date else None,
+            summary=e.summary or None,
+        )
+        for e in editions
+    ]
+
+
+@router.get("/editions/{slug}", response=EditionSchema)
+def get_edition(request, slug: str):
+    """Get a single edition by slug."""
+    e = Edition.objects.get(slug=slug)
+    return EditionSchema(
+        id=str(e.id),
+        work_id=str(e.work_id),
+        name=e.name,
+        slug=e.slug,
+        edition_type=e.edition_type,
+        igdb_id=e.igdb_id,
+        cover_url=e.cover_url or None,
+        release_date=e.release_date.isoformat() if e.release_date else None,
+        summary=e.summary or None,
+    )
+
+
+@router.post("/editions", response=EditionSchema)
+def create_edition(request, data: EditionCreateSchema):
+    """Create a new edition."""
+    work = Work.objects.get(id=data.work_id)
+
     release_date = None
     if data.release_date:
         release_date = datetime.strptime(data.release_date, "%Y-%m-%d").date()
 
-    game = Game.objects.create(
-        igdb_id=data.igdb_id,
-        slug=data.slug,
+    edition = Edition.objects.create(
+        work=work,
         name=data.name,
+        slug=data.slug,
+        edition_type=data.edition_type,
+        igdb_id=data.igdb_id,
         cover_url=data.cover_url or "",
         release_date=release_date,
         summary=data.summary or "",
+        platforms=data.platforms or [],
         igdb_data=data.igdb_data or {},
         last_synced=datetime.now() if data.igdb_id else None,
     )
-    return GameSchema(
-        id=str(game.id),
-        igdb_id=game.igdb_id,
-        slug=game.slug,
-        name=game.name,
-        cover_url=game.cover_url or None,
-        release_date=game.release_date.isoformat() if game.release_date else None,
-        summary=game.summary or None,
+    return EditionSchema(
+        id=str(edition.id),
+        work_id=str(edition.work_id),
+        name=edition.name,
+        slug=edition.slug,
+        edition_type=edition.edition_type,
+        igdb_id=edition.igdb_id,
+        cover_url=edition.cover_url or None,
+        release_date=edition.release_date.isoformat() if edition.release_date else None,
+        summary=edition.summary or None,
     )
-
-
-@router.post("/games/bulk", response=BulkImportResult)
-def bulk_import_games(request, data: BulkImportRequest):
-    """Bulk import games. Skips games that already exist by igdb_id or slug."""
-    created = 0
-    skipped = 0
-    errors = []
-
-    for game_data in data.games:
-        try:
-            # Check if game already exists
-            existing = None
-            if game_data.igdb_id:
-                existing = Game.objects.filter(igdb_id=game_data.igdb_id).first()
-            if not existing:
-                existing = Game.objects.filter(slug=game_data.slug).first()
-
-            if existing:
-                skipped += 1
-                continue
-
-            release_date = None
-            if game_data.release_date:
-                release_date = datetime.strptime(game_data.release_date, "%Y-%m-%d").date()
-
-            Game.objects.create(
-                igdb_id=game_data.igdb_id,
-                slug=game_data.slug,
-                name=game_data.name,
-                cover_url=game_data.cover_url or "",
-                release_date=release_date,
-                summary=game_data.summary or "",
-                igdb_data=game_data.igdb_data or {},
-                last_synced=datetime.now() if game_data.igdb_id else None,
-            )
-            created += 1
-        except IntegrityError as e:
-            errors.append(f"{game_data.name}: {str(e)}")
-        except Exception as e:
-            errors.append(f"{game_data.name}: {str(e)}")
-
-    return BulkImportResult(created=created, skipped=skipped, errors=errors)

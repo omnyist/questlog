@@ -6,11 +6,11 @@ from django.db import models
 
 
 class Profile(models.Model):
-    """Path of Exile profile linking to the base Game record."""
+    """Path of Exile profile linking to the Work record."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game = models.OneToOneField(
-        "library.Game",
+    work = models.OneToOneField(
+        "library.Work",
         on_delete=models.CASCADE,
         related_name="poe_profile",
     )

@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from .models import Entry
-from .models import List
+from .models import Entry, List
 
 
 class EntryInline(admin.TabularInline):
     model = Entry
     extra = 1
-    autocomplete_fields = ["game"]
+    autocomplete_fields = ["work"]
 
 
 @admin.register(List)
@@ -27,8 +26,8 @@ class ListAdmin(admin.ModelAdmin):
 
 @admin.register(Entry)
 class EntryAdmin(admin.ModelAdmin):
-    list_display = ["game", "list", "position", "added_at"]
-    list_filter = ["list"]
-    search_fields = ["game__name", "list__name"]
+    list_display = ["work", "list", "position", "added_at"]
+    list_filter = ["list", "work__franchise"]
+    search_fields = ["work__name", "list__name"]
     readonly_fields = ["id", "added_at"]
-    autocomplete_fields = ["game", "list"]
+    autocomplete_fields = ["work", "list"]

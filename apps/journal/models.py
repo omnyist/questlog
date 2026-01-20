@@ -7,15 +7,16 @@ from django.db import models
 
 class Playthrough(models.Model):
     """
-    A record of playing a game.
+    A record of playing/beating an Edition.
 
     One Playthrough per run - if you beat FF4 on SNES in 1995
-    and again on DS in 2008, that's two Playthrough records.
+    and the DS remake in 2008, that's two Playthrough records
+    (potentially of different Editions of the same Work).
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game = models.ForeignKey(
-        "library.Game",
+    edition = models.ForeignKey(
+        "library.Edition",
         on_delete=models.CASCADE,
         related_name="playthroughs",
     )
@@ -35,8 +36,13 @@ class Playthrough(models.Model):
 
     def __str__(self):
         platform_str = f" ({self.platform})" if self.platform else ""
-        return f"{self.game.name}{platform_str}"
+        return f"{self.edition.work.name}{platform_str}"
 
     @property
     def is_completed(self):
         return self.completed_at is not None
+
+    @property
+    def work(self):
+        """Convenience accessor for the Work."""
+        return self.edition.work

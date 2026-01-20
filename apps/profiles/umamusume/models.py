@@ -6,11 +6,11 @@ from django.db import models
 
 
 class Profile(models.Model):
-    """Umamusume profile linking to the base Game record."""
+    """Umamusume profile linking to the Work record."""
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    game = models.OneToOneField(
-        "library.Game",
+    work = models.OneToOneField(
+        "library.Work",
         on_delete=models.CASCADE,
         related_name="umamusume_profile",
     )
