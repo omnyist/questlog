@@ -2,7 +2,16 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from .models import Edition, Franchise, Work
+from .models import Edition, Franchise, Genre, Work
+
+
+@admin.register(Genre)
+class GenreAdmin(admin.ModelAdmin):
+    list_display = ["name", "slug", "parent", "igdb_id"]
+    list_filter = ["parent"]
+    search_fields = ["name"]
+    prepopulated_fields = {"slug": ("name",)}
+    autocomplete_fields = ["parent"]
 
 
 @admin.register(Franchise)
@@ -14,12 +23,13 @@ class FranchiseAdmin(admin.ModelAdmin):
 
 @admin.register(Work)
 class WorkAdmin(admin.ModelAdmin):
-    list_display = ["name", "franchise", "original_release_year", "parent_work"]
-    list_filter = ["franchise", "relationship_type"]
+    list_display = ["name", "franchise", "primary_genre", "original_release_year"]
+    list_filter = ["franchise", "primary_genre", "genres", "relationship_type"]
     search_fields = ["name", "slug"]
     readonly_fields = ["id", "created_at", "updated_at"]
     prepopulated_fields = {"slug": ("name",)}
-    autocomplete_fields = ["franchise", "parent_work"]
+    autocomplete_fields = ["franchise", "parent_work", "primary_genre"]
+    filter_horizontal = ["genres"]
 
 
 @admin.register(Edition)

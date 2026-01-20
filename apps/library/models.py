@@ -5,6 +5,32 @@ import uuid
 from django.db import models
 
 
+class Genre(models.Model):
+    """Game genre with optional hierarchy for categorization."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True, max_length=100)
+    igdb_id = models.IntegerField(null=True, blank=True, unique=True)
+
+    parent = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="children",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
 class Franchise(models.Model):
     """Optional grouping for related Works (e.g., 'Final Fantasy', 'Xenoblade')."""
 
@@ -60,6 +86,19 @@ class Work(models.Model):
         max_length=20,
         blank=True,
         choices=RELATIONSHIP_TYPES,
+    )
+
+    genres = models.ManyToManyField(
+        Genre,
+        blank=True,
+        related_name="works",
+    )
+    primary_genre = models.ForeignKey(
+        Genre,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="primary_works",
     )
 
     original_release_year = models.IntegerField(null=True, blank=True)
