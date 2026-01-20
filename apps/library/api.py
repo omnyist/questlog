@@ -194,3 +194,134 @@ def create_edition(request, data: EditionCreateSchema):
         release_date=edition.release_date.isoformat() if edition.release_date else None,
         summary=edition.summary or None,
     )
+
+
+# Bulk import schemas
+class BulkFranchiseSchema(Schema):
+    name: str
+    slug: str
+
+
+class BulkWorkSchema(Schema):
+    name: str
+    slug: str
+    franchise_slug: str | None = None
+    original_release_year: int | None = None
+
+
+class BulkEditionSchema(Schema):
+    work_slug: str
+    name: str
+    slug: str
+    edition_type: str = "original"
+    igdb_id: int | None = None
+    cover_url: str | None = None
+    release_date: str | None = None
+    summary: str | None = None
+    platforms: list[str] | None = None
+    igdb_data: dict | None = None
+
+
+class BulkImportSchema(Schema):
+    franchises: list[BulkFranchiseSchema]
+    works: list[BulkWorkSchema]
+    editions: list[BulkEditionSchema]
+
+
+class BulkImportResultSchema(Schema):
+    franchises_created: int
+    franchises_skipped: int
+    works_created: int
+    works_skipped: int
+    editions_created: int
+    editions_skipped: int
+    errors: list[str]
+
+
+@router.post("/import", response=BulkImportResultSchema)
+def bulk_import(request, data: BulkImportSchema):
+    """Bulk import franchises, works, and editions."""
+    result = {
+        "franchises_created": 0,
+        "franchises_skipped": 0,
+        "works_created": 0,
+        "works_skipped": 0,
+        "editions_created": 0,
+        "editions_skipped": 0,
+        "errors": [],
+    }
+
+    # Create franchises first
+    franchise_map = {}  # slug -> Franchise
+    for f_data in data.franchises:
+        try:
+            franchise, created = Franchise.objects.get_or_create(
+                slug=f_data.slug,
+                defaults={"name": f_data.name},
+            )
+            franchise_map[f_data.slug] = franchise
+            if created:
+                result["franchises_created"] += 1
+            else:
+                result["franchises_skipped"] += 1
+        except IntegrityError as e:
+            result["errors"].append(f"Franchise {f_data.slug}: {e}")
+
+    # Create works
+    work_map = {}  # slug -> Work
+    for w_data in data.works:
+        try:
+            franchise = franchise_map.get(w_data.franchise_slug) if w_data.franchise_slug else None
+            work, created = Work.objects.get_or_create(
+                slug=w_data.slug,
+                defaults={
+                    "name": w_data.name,
+                    "franchise": franchise,
+                    "original_release_year": w_data.original_release_year,
+                },
+            )
+            work_map[w_data.slug] = work
+            if created:
+                result["works_created"] += 1
+            else:
+                result["works_skipped"] += 1
+        except IntegrityError as e:
+            result["errors"].append(f"Work {w_data.slug}: {e}")
+
+    # Create editions
+    for e_data in data.editions:
+        try:
+            work = work_map.get(e_data.work_slug)
+            if not work:
+                work = Work.objects.get(slug=e_data.work_slug)
+                work_map[e_data.work_slug] = work
+
+            release_date = None
+            if e_data.release_date:
+                release_date = datetime.strptime(e_data.release_date, "%Y-%m-%d").date()
+
+            edition, created = Edition.objects.get_or_create(
+                slug=e_data.slug,
+                defaults={
+                    "work": work,
+                    "name": e_data.name,
+                    "edition_type": e_data.edition_type,
+                    "igdb_id": e_data.igdb_id,
+                    "cover_url": e_data.cover_url or "",
+                    "release_date": release_date,
+                    "summary": e_data.summary or "",
+                    "platforms": e_data.platforms or [],
+                    "igdb_data": e_data.igdb_data or {},
+                    "last_synced": datetime.now() if e_data.igdb_id else None,
+                },
+            )
+            if created:
+                result["editions_created"] += 1
+            else:
+                result["editions_skipped"] += 1
+        except IntegrityError as e:
+            result["errors"].append(f"Edition {e_data.slug}: {e}")
+        except Work.DoesNotExist:
+            result["errors"].append(f"Edition {e_data.slug}: Work {e_data.work_slug} not found")
+
+    return BulkImportResultSchema(**result)
