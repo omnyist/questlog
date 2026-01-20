@@ -5,7 +5,7 @@ from datetime import datetime
 from django.db import IntegrityError
 from ninja import Router, Schema
 
-from .models import Edition, Franchise, Work
+from .models import Edition, Franchise, Genre, Work
 
 router = Router(tags=["library"])
 
@@ -15,6 +15,26 @@ class FranchiseSchema(Schema):
     id: str
     name: str
     slug: str
+
+
+class GenreSchema(Schema):
+    id: str
+    name: str
+    slug: str
+    igdb_id: int | None = None
+    parent_id: str | None = None
+
+
+class GenreCreateSchema(Schema):
+    name: str
+    slug: str
+    igdb_id: int | None = None
+    parent_id: str | None = None
+
+
+class WorkGenresUpdateSchema(Schema):
+    genre_ids: list[str]
+    primary_genre_id: str | None = None
 
 
 class WorkSchema(Schema):
@@ -69,6 +89,44 @@ def list_franchises(request):
     ]
 
 
+# Genre endpoints
+@router.get("/genres", response=list[GenreSchema])
+def list_genres(request):
+    """List all genres."""
+    return [
+        GenreSchema(
+            id=str(g.id),
+            name=g.name,
+            slug=g.slug,
+            igdb_id=g.igdb_id,
+            parent_id=str(g.parent_id) if g.parent_id else None,
+        )
+        for g in Genre.objects.all()
+    ]
+
+
+@router.post("/genres", response=GenreSchema)
+def create_genre(request, data: GenreCreateSchema):
+    """Create a new genre."""
+    parent = None
+    if data.parent_id:
+        parent = Genre.objects.get(id=data.parent_id)
+
+    genre = Genre.objects.create(
+        name=data.name,
+        slug=data.slug,
+        igdb_id=data.igdb_id,
+        parent=parent,
+    )
+    return GenreSchema(
+        id=str(genre.id),
+        name=genre.name,
+        slug=genre.slug,
+        igdb_id=genre.igdb_id,
+        parent_id=str(genre.parent_id) if genre.parent_id else None,
+    )
+
+
 # Work endpoints
 @router.get("/works", response=list[WorkSchema])
 def list_works(request, franchise: str | None = None, limit: int = 100, offset: int = 0):
@@ -118,6 +176,35 @@ def get_work(request, slug: str):
             for e in w.editions.all()
         ],
     )
+
+
+@router.put("/works/{slug}/genres", response={200: dict, 404: dict})
+def update_work_genres(request, slug: str, data: WorkGenresUpdateSchema):
+    """Update genres for a work."""
+    try:
+        work = Work.objects.get(slug=slug)
+    except Work.DoesNotExist:
+        return 404, {"error": "Work not found"}
+
+    # Set genres
+    genres = Genre.objects.filter(id__in=data.genre_ids)
+    work.genres.set(genres)
+
+    # Set primary genre
+    if data.primary_genre_id:
+        try:
+            work.primary_genre = Genre.objects.get(id=data.primary_genre_id)
+        except Genre.DoesNotExist:
+            pass
+    else:
+        work.primary_genre = None
+    work.save()
+
+    return 200, {
+        "work": slug,
+        "genres": [g.slug for g in work.genres.all()],
+        "primary_genre": work.primary_genre.slug if work.primary_genre else None,
+    }
 
 
 # Edition endpoints
