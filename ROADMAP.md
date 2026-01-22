@@ -26,40 +26,35 @@ https://questlog.omnyist.com/api/docs
 
 ## Planned Features
 
-### Activity Stream / Changelog
+### List Activity / Revision History
 
-Track changes to the library over time, similar to gist revision history:
+Track changes to each list over time, similar to gist revision history. Scoped to individual lists, not a global feed.
 
 ```
+GET /api/lists/completed-rpgs/activity
+
 Jan 21, 2026
-  + Added "Completed RPGs" list (92 entries)
+  + Added ".hack//Infection"
 
-Jan 20, 2026
-  + Imported 100 works from gist
-  + Added 26 franchises
-
-Dec 15, 2025
-  ~ Marked "Elden Ring" as completed
-  + Added "Final Fantasy VII Rebirth" to library
+Jan 21, 2026
+  + Created list with 91 entries
 ```
 
 **Model sketch:**
 ```python
-class Activity(models.Model):
+class ListActivity(models.Model):
+    list = models.ForeignKey(List, on_delete=models.CASCADE, related_name="activity")
     timestamp = models.DateTimeField(auto_now_add=True)
-    verb = models.CharField(max_length=20)  # added, updated, completed, started
-    subject = models.CharField(max_length=255)  # "Final Fantasy VII Rebirth"
-    subject_type = models.CharField(max_length=50)  # work, list, playthrough
-    subject_slug = models.CharField(max_length=255, blank=True)
-    context = models.CharField(max_length=255, blank=True)  # "to Completed RPGs"
-    metadata = models.JSONField(default=dict)  # count, diff, etc.
+    verb = models.CharField(max_length=20)  # created, added, removed, reordered
+    entries = models.JSONField(default=list)  # Work slugs affected
+    metadata = models.JSONField(default=dict)  # count, positions, notes
 ```
 
 **To implement:**
-- Create Activity model in new `activity` app
-- Add Django signals to auto-log model changes
-- Add explicit logging for bulk operations
-- API endpoint for querying timeline (`GET /api/activity`)
+- Add ListActivity model to lists app
+- Log on Entry create/delete via signals
+- Log bulk operations explicitly
+- API endpoint: `GET /api/lists/{slug}/activity`
 
 ### Hierarchical Genre Queries
 
