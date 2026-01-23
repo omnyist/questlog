@@ -5,6 +5,11 @@ import uuid
 from django.db import models
 
 
+def empty_list():
+    """Default factory for JSONField to avoid lambda serialization issues."""
+    return []
+
+
 class List(models.Model):
     """A curated collection of Works - 'Top 25 RPGs', 'FF Favorites', etc."""
 
@@ -71,7 +76,7 @@ class ListActivity(models.Model):
     )
     timestamp = models.DateTimeField(auto_now_add=True)
     verb = models.CharField(max_length=20, choices=VERBS)
-    entries = models.JSONField(default=lambda: [], blank=True)  # Work slugs affected
+    entries = models.JSONField(default=empty_list, blank=True)  # Work slugs affected
     metadata = models.JSONField(default=dict, blank=True)  # Extra context
 
     class Meta:
