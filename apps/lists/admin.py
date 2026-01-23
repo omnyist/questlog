@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from .models import Entry, List
+from .models import Entry, List, ListActivity
 
 
 class EntryInline(admin.TabularInline):
@@ -31,3 +31,28 @@ class EntryAdmin(admin.ModelAdmin):
     search_fields = ["work__name", "list__name"]
     readonly_fields = ["id", "added_at"]
     autocomplete_fields = ["work", "list"]
+
+
+@admin.register(ListActivity)
+class ListActivityAdmin(admin.ModelAdmin):
+    list_display = ["list", "verb", "entry_summary", "timestamp"]
+    list_filter = ["list", "verb"]
+    search_fields = ["list__name", "entries"]
+    readonly_fields = ["id", "list", "timestamp", "verb", "entries", "metadata"]
+    ordering = ["-timestamp"]
+
+    @admin.display(description="Entries")
+    def entry_summary(self, obj):
+        count = len(obj.entries)
+        if count == 1:
+            return obj.entries[0]
+        return f"{count} entries"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

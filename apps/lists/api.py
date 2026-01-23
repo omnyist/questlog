@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime
+
 from ninja import Router, Schema
 
 from apps.library.models import Work
 
-from .models import Entry, List
+from .models import Entry, List, ListActivity
 
 router = Router(tags=["lists"])
 
@@ -175,3 +177,30 @@ def bulk_add_entries(request, slug: str, data: BulkEntryCreateSchema):
             result["errors"].append(f"{entry_data.work_slug}: {e}")
 
     return BulkEntryResultSchema(**result)
+
+
+# Activity schemas
+class ListActivitySchema(Schema):
+    id: str
+    timestamp: datetime
+    verb: str
+    entries: list[str]
+    metadata: dict
+
+
+# Activity endpoints
+@router.get("/lists/{slug}/activity", response=list[ListActivitySchema])
+def get_list_activity(request, slug: str, limit: int = 50):
+    """Get activity history for a list."""
+    lst = List.objects.get(slug=slug)
+    activities = lst.activity.all()[:limit]
+    return [
+        ListActivitySchema(
+            id=str(a.id),
+            timestamp=a.timestamp,
+            verb=a.verb,
+            entries=a.entries,
+            metadata=a.metadata,
+        )
+        for a in activities
+    ]
