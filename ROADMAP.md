@@ -9,52 +9,32 @@ Questlog is a personal gaming data backend with:
 - **Profiles**: Game-specific integrations (FFXIV, Destiny, PoE, Umamusume)
 - **Bulk Import**: API endpoint for importing games with IGDB data
 
-## Priority: API Documentation
+## Completed
 
-OpenAPI/Swagger docs are needed for Multiverse (Omnyist) and Synthform integration.
+### API Documentation ✓
 
-Django Ninja has built-in OpenAPI support. Enable at:
+OpenAPI/Swagger docs available at:
 ```
 https://questlog.omnyist.com/api/docs
 ```
 
-**To implement:**
-- Ensure all endpoints have proper response schemas
-- Add descriptions to endpoints and schemas
-- Document query parameters and filters
-- Add authentication docs when auth is added
-
-## Planned Features
-
-### List Activity / Revision History
+### List Activity / Revision History ✓
 
 Track changes to each list over time, similar to gist revision history. Scoped to individual lists, not a global feed.
 
 ```
-GET /api/lists/completed-rpgs/activity
-
-Jan 21, 2026
-  + Added ".hack//Infection"
-
-Jan 21, 2026
-  + Created list with 91 entries
+GET /api/lists/{slug}/activity
 ```
 
-**Model sketch:**
-```python
-class ListActivity(models.Model):
-    list = models.ForeignKey(List, on_delete=models.CASCADE, related_name="activity")
-    timestamp = models.DateTimeField(auto_now_add=True)
-    verb = models.CharField(max_length=20)  # created, added, removed, reordered
-    entries = models.JSONField(default=list)  # Work slugs affected
-    metadata = models.JSONField(default=dict)  # count, positions, notes
-```
+- ListActivity model with verb (added/removed/reordered), entries, metadata
+- Signals auto-log Entry create/delete
+- Read-only admin interface
 
-**To implement:**
-- Add ListActivity model to lists app
-- Log on Entry create/delete via signals
-- Log bulk operations explicitly
-- API endpoint: `GET /api/lists/{slug}/activity`
+### API Contract Tests ✓
+
+33 tests covering library and lists endpoints with proper 404 handling.
+
+## Planned Features
 
 ### Hierarchical Genre Queries
 
@@ -105,7 +85,5 @@ Action-Adventure
 
 ## Technical Debt
 
-- Add comprehensive test coverage
-- API documentation with OpenAPI/Swagger
 - Rate limiting for external API calls
 - Caching layer for IGDB data
