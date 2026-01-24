@@ -99,11 +99,15 @@ def create_list(request, data: ListCreateSchema):
     )
 
 
-@router.get("/lists/{slug}", response=ListDetailSchema)
+@router.get("/lists/{slug}", response={200: ListDetailSchema, 404: dict})
 def get_list(request, slug: str):
     """Get a list with all its entries."""
-    lst = List.objects.prefetch_related("entries__work").get(slug=slug)
-    return ListDetailSchema(
+    try:
+        lst = List.objects.prefetch_related("entries__work").get(slug=slug)
+    except List.DoesNotExist:
+        return 404, {"error": "List not found"}
+
+    return 200, ListDetailSchema(
         id=str(lst.id),
         slug=lst.slug,
         name=lst.name,
@@ -124,11 +128,18 @@ def get_list(request, slug: str):
 
 
 # Entry endpoints
-@router.post("/lists/{slug}/entries", response=EntrySchema)
+@router.post("/lists/{slug}/entries", response={200: EntrySchema, 404: dict})
 def add_entry(request, slug: str, data: EntryCreateSchema):
     """Add a work to a list."""
-    lst = List.objects.get(slug=slug)
-    work = Work.objects.get(slug=data.work_slug)
+    try:
+        lst = List.objects.get(slug=slug)
+    except List.DoesNotExist:
+        return 404, {"error": "List not found"}
+
+    try:
+        work = Work.objects.get(slug=data.work_slug)
+    except Work.DoesNotExist:
+        return 404, {"error": "Work not found"}
 
     entry = Entry.objects.create(
         list=lst,
@@ -136,7 +147,7 @@ def add_entry(request, slug: str, data: EntryCreateSchema):
         position=data.position,
         notes=data.notes,
     )
-    return EntrySchema(
+    return 200, EntrySchema(
         id=str(entry.id),
         work_id=str(entry.work_id),
         work_name=entry.work.name,
@@ -189,12 +200,16 @@ class ListActivitySchema(Schema):
 
 
 # Activity endpoints
-@router.get("/lists/{slug}/activity", response=list[ListActivitySchema])
+@router.get("/lists/{slug}/activity", response={200: list[ListActivitySchema], 404: dict})
 def get_list_activity(request, slug: str, limit: int = 50):
     """Get activity history for a list."""
-    lst = List.objects.get(slug=slug)
+    try:
+        lst = List.objects.get(slug=slug)
+    except List.DoesNotExist:
+        return 404, {"error": "List not found"}
+
     activities = lst.activity.all()[:limit]
-    return [
+    return 200, [
         ListActivitySchema(
             id=str(a.id),
             timestamp=a.timestamp,

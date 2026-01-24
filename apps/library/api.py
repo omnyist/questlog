@@ -149,11 +149,15 @@ def list_works(request, franchise: str | None = None, limit: int = 100, offset: 
     ]
 
 
-@router.get("/works/{slug}", response=WorkDetailSchema)
+@router.get("/works/{slug}", response={200: WorkDetailSchema, 404: dict})
 def get_work(request, slug: str):
     """Get a single work with all its editions."""
-    w = Work.objects.select_related("franchise").prefetch_related("editions").get(slug=slug)
-    return WorkDetailSchema(
+    try:
+        w = Work.objects.select_related("franchise").prefetch_related("editions").get(slug=slug)
+    except Work.DoesNotExist:
+        return 404, {"error": "Work not found"}
+
+    return 200, WorkDetailSchema(
         id=str(w.id),
         name=w.name,
         slug=w.slug,
@@ -231,11 +235,15 @@ def list_editions(request, work: str | None = None, limit: int = 100, offset: in
     ]
 
 
-@router.get("/editions/{slug}", response=EditionSchema)
+@router.get("/editions/{slug}", response={200: EditionSchema, 404: dict})
 def get_edition(request, slug: str):
     """Get a single edition by slug."""
-    e = Edition.objects.get(slug=slug)
-    return EditionSchema(
+    try:
+        e = Edition.objects.get(slug=slug)
+    except Edition.DoesNotExist:
+        return 404, {"error": "Edition not found"}
+
+    return 200, EditionSchema(
         id=str(e.id),
         work_id=str(e.work_id),
         name=e.name,
