@@ -108,6 +108,16 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Redis
 REDIS_URL = env("REDIS_URL", default="redis://localhost:6380/0")
 
+# Cache
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": REDIS_URL,
+        "KEY_PREFIX": "questlog",
+    }
+}
+
 # IGDB API (Twitch OAuth)
 IGDB_CLIENT_ID = env("TWITCH_CLIENT_ID", default="")
 IGDB_CLIENT_SECRET = env("TWITCH_CLIENT_SECRET", default="")
+IGDB_RATE_LIMIT = 4  # requests per second (free tier limit)

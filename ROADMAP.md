@@ -34,6 +34,12 @@ GET /api/lists/{slug}/activity
 
 33 tests covering library and lists endpoints with proper 404 handling.
 
+### IGDB Rate Limiting & Caching ✓
+
+- Token bucket rate limiter (4 req/sec for free tier)
+- OAuth token cached in Redis
+- Game data cached for 24 hours
+
 ## Planned Features
 
 ### Hierarchical Genre Queries
@@ -82,8 +88,3 @@ Action-Adventure
 - Completion stats by franchise, genre, year
 - Playtime aggregation
 - Personal gaming trends
-
-## Technical Debt
-
-- Rate limiting for external API calls
-- Caching layer for IGDB data
