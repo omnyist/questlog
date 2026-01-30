@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     "apps.profiles.destiny",
     "apps.profiles.poe",
     "apps.profiles.umamusume",
+    "apps.profiles.acnh",
 ]
 
 MIDDLEWARE = [
