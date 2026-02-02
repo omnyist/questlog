@@ -51,3 +51,19 @@ class VillagerHuntAdmin(admin.ModelAdmin):
     @admin.display(description="Islands Visited")
     def encounter_count(self, obj):
         return obj.encounters.count()
+
+
+@admin.register(Encounter)
+class EncounterAdmin(admin.ModelAdmin):
+    list_display = [
+        "villager_name",
+        "personality",
+        "species",
+        "timestamp",
+        "recruited",
+        "hunt",
+    ]
+    list_filter = ["personality", "species", "recruited", "seen_before"]
+    search_fields = ["villager_name", "species", "notes"]
+    readonly_fields = ["id", "created_at"]
+    autocomplete_fields = ["hunt"]
