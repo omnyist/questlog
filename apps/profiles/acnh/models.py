@@ -5,6 +5,44 @@ import uuid
 from django.db import models
 
 
+class Villager(models.Model):
+    """An Animal Crossing villager from the ACNH API."""
+
+    PERSONALITIES = [
+        ("cranky", "Cranky"),
+        ("jock", "Jock"),
+        ("lazy", "Lazy"),
+        ("normal", "Normal"),
+        ("peppy", "Peppy"),
+        ("smug", "Smug"),
+        ("snooty", "Snooty"),
+        ("uchi", "Uchi"),
+    ]
+
+    GENDERS = [
+        ("male", "Male"),
+        ("female", "Female"),
+    ]
+
+    id = models.PositiveIntegerField(primary_key=True, help_text="ACNH API ID")
+    name = models.CharField(max_length=100, db_index=True)
+    personality = models.CharField(max_length=20, choices=PERSONALITIES)
+    species = models.CharField(max_length=50, db_index=True)
+    gender = models.CharField(max_length=10, choices=GENDERS)
+    birthday = models.CharField(max_length=10, blank=True)
+    catchphrase = models.CharField(max_length=100, blank=True)
+    hobby = models.CharField(max_length=50, blank=True)
+    saying = models.TextField(blank=True)
+    icon_url = models.URLField(blank=True)
+    image_url = models.URLField(blank=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.species})"
+
+
 class Profile(models.Model):
     """ACNH profile linking to the Work record."""
 
