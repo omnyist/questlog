@@ -80,14 +80,20 @@ class VillagerHunt(models.Model):
         related_name="hunts",
     )
     date = models.DateField()
-    target_villager = models.CharField(
-        max_length=100,
+    target_villager = models.ForeignKey(
+        Villager,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
+        related_name="hunts_targeted",
         help_text="Who you were hoping to find",
     )
-    result_villager = models.CharField(
-        max_length=100,
+    result_villager = models.ForeignKey(
+        Villager,
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
+        related_name="hunts_recruited",
         help_text="Who you ended up recruiting",
     )
     notes = models.TextField(blank=True)
@@ -100,7 +106,8 @@ class VillagerHunt(models.Model):
 
     def __str__(self):
         if self.result_villager:
-            return f"Hunt for {self.target_villager or '?'} → {self.result_villager}"
+            target = self.target_villager.name if self.target_villager else "?"
+            return f"Hunt for {target} → {self.result_villager.name}"
         return f"Hunt on {self.date}"
 
     @property
