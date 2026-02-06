@@ -123,30 +123,20 @@ class VillagerHunt(models.Model):
 class Encounter(models.Model):
     """A single mystery island visit during a hunt."""
 
-    PERSONALITIES = [
-        ("cranky", "Cranky"),
-        ("jock", "Jock"),
-        ("lazy", "Lazy"),
-        ("normal", "Normal"),
-        ("peppy", "Peppy"),
-        ("smug", "Smug"),
-        ("snooty", "Snooty"),
-        ("uchi", "Uchi"),
-    ]
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     hunt = models.ForeignKey(
         VillagerHunt,
         on_delete=models.CASCADE,
         related_name="encounters",
     )
-    villager_name = models.CharField(max_length=100)
-    personality = models.CharField(max_length=20, choices=PERSONALITIES)
-    species = models.CharField(max_length=50)
+    villager = models.ForeignKey(
+        Villager,
+        on_delete=models.CASCADE,
+        related_name="encounters",
+    )
     timestamp = models.DateTimeField()
     bonus_item = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True, help_text="Internal monologue")
-    seen_before = models.BooleanField(default=False)
     recruited = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -156,4 +146,4 @@ class Encounter(models.Model):
 
     def __str__(self):
         recruited = " ✓" if self.recruited else ""
-        return f"{self.villager_name} ({self.species}){recruited}"
+        return f"{self.villager.name} ({self.villager.species}){recruited}"
