@@ -40,7 +40,23 @@ GET /api/lists/{slug}/activity
 - OAuth token cached in Redis
 - Game data cached for 24 hours
 
+### ACNH Villager Hunting ✓
+
+- Villager model synced from ACNH API (391 villagers)
+- VillagerHunt and Encounter models for tracking mystery island visits
+- Profile linked to Work for game-specific data
+- Admin with autocomplete for villager selection
+- Images served via GitHub raw URLs (external dependency)
+
 ## Planned Features
+
+### ACNH Local Image Storage
+
+Store villager images locally instead of depending on external GitHub URLs:
+- Configure Django media storage (local or S3)
+- Download 391 villager icons and images (~50-100MB)
+- Add ImageField to Villager model
+- Serve via whitenoise or CDN
 
 ### Hierarchical Genre Queries
 
