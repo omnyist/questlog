@@ -35,9 +35,17 @@ services:
       - REDIS_URL=redis://redis:6379/0
     ports:
       - "7176:7176"
+    networks:
+      - default
+      - synth
     command: >
       sh -c "uv run python manage.py migrate &&
              uv run daphne -b 0.0.0.0 -p 7176 config.asgi:application"
+
+networks:
+  default:
+  synth:
+    external: true
 
 volumes:
   postgres_data:

@@ -123,3 +123,6 @@ CACHES = {
 IGDB_CLIENT_ID = env("TWITCH_CLIENT_ID", default="")
 IGDB_CLIENT_SECRET = env("TWITCH_CLIENT_SECRET", default="")
 IGDB_RATE_LIMIT = 4  # requests per second (free tier limit)
+
+# API Authentication
+API_KEY = env("API_KEY", default="")
