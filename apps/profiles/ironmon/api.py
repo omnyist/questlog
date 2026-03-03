@@ -84,11 +84,16 @@ def get_stats(request, challenge: str | None = None):
     runs_with_results = runs.filter(highest_checkpoint__isnull=False).count()
 
     # Checkpoint stats
-    # "attempts" = runs that reached at least this checkpoint (highest_checkpoint order >= this order)
-    # "clears" = runs that cleared past this checkpoint (highest_checkpoint order > this order), OR cleared this one (has a result row)
+    # "attempts" for checkpoint N = runs that cleared checkpoint N-1 (all runs for the first checkpoint)
+    # "clears" = runs that cleared this checkpoint
     checkpoint_stats = []
-    for cp in ch.checkpoints.all():
-        attempts = runs.filter(highest_checkpoint__order__gte=cp.order).count()
+    all_checkpoints = list(ch.checkpoints.all())
+    for i, cp in enumerate(all_checkpoints):
+        if i == 0:
+            attempts = total_runs
+        else:
+            prev_cp = all_checkpoints[i - 1]
+            attempts = prev_cp.results.filter(run__challenge=ch, cleared=True).count()
         clears = cp.results.filter(run__challenge=ch, cleared=True).count()
         checkpoint_stats.append(
             CheckpointStatSchema(
@@ -150,9 +155,15 @@ def checkpoint_stats(request, challenge: str | None = None):
         return []
 
     runs = Run.objects.filter(challenge=ch)
+    total_runs = runs.count()
+    all_checkpoints = list(ch.checkpoints.all())
     stats = []
-    for cp in ch.checkpoints.all():
-        attempts = runs.filter(highest_checkpoint__order__gte=cp.order).count()
+    for i, cp in enumerate(all_checkpoints):
+        if i == 0:
+            attempts = total_runs
+        else:
+            prev_cp = all_checkpoints[i - 1]
+            attempts = prev_cp.results.filter(run__challenge=ch, cleared=True).count()
         clears = cp.results.filter(run__challenge=ch, cleared=True).count()
         stats.append(
             CheckpointStatSchema(
