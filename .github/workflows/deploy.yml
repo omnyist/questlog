@@ -30,6 +30,7 @@ jobs:
         REDIS_URL=${{ env.REDIS_URL }}
         TWITCH_CLIENT_ID=${{ vars.TWITCH_CLIENT_ID }}
         TWITCH_CLIENT_SECRET=${{ secrets.TWITCH_CLIENT_SECRET }}
+        API_KEY=${{ secrets.API_KEY }}
         EOF
 
     - name: Deploy containers
