@@ -30,9 +30,9 @@ class CheckpointStatSchema(Schema):
     order: int
     name: str
     trainer: str
-    attempts: int
-    clears: int
-    clear_rate: float
+    entered: int
+    survived: int
+    survival_rate: float
 
 
 class StatsSchema(Schema):
@@ -84,25 +84,25 @@ def get_stats(request, challenge: str | None = None):
     runs_with_results = runs.filter(highest_checkpoint__isnull=False).count()
 
     # Checkpoint stats
-    # "attempts" for checkpoint N = runs that cleared checkpoint N-1 (all runs for the first checkpoint)
-    # "clears" = runs that cleared this checkpoint
+    # "entered" = runs that entered this stage (cleared the previous checkpoint, or all runs for the first)
+    # "survived" = runs that cleared this checkpoint
     checkpoint_stats = []
     all_checkpoints = list(ch.checkpoints.all())
     for i, cp in enumerate(all_checkpoints):
         if i == 0:
-            attempts = total_runs
+            entered = total_runs
         else:
             prev_cp = all_checkpoints[i - 1]
-            attempts = prev_cp.results.filter(run__challenge=ch, cleared=True).count()
-        clears = cp.results.filter(run__challenge=ch, cleared=True).count()
+            entered = prev_cp.results.filter(run__challenge=ch, cleared=True).count()
+        survived = cp.results.filter(run__challenge=ch, cleared=True).count()
         checkpoint_stats.append(
             CheckpointStatSchema(
                 order=cp.order,
                 name=cp.name,
                 trainer=cp.trainer,
-                attempts=attempts,
-                clears=clears,
-                clear_rate=clears / attempts if attempts > 0 else 0,
+                entered=entered,
+                survived=survived,
+                survival_rate=survived / entered if entered > 0 else 0,
             )
         )
 
@@ -160,19 +160,19 @@ def checkpoint_stats(request, challenge: str | None = None):
     stats = []
     for i, cp in enumerate(all_checkpoints):
         if i == 0:
-            attempts = total_runs
+            entered = total_runs
         else:
             prev_cp = all_checkpoints[i - 1]
-            attempts = prev_cp.results.filter(run__challenge=ch, cleared=True).count()
-        clears = cp.results.filter(run__challenge=ch, cleared=True).count()
+            entered = prev_cp.results.filter(run__challenge=ch, cleared=True).count()
+        survived = cp.results.filter(run__challenge=ch, cleared=True).count()
         stats.append(
             CheckpointStatSchema(
                 order=cp.order,
                 name=cp.name,
                 trainer=cp.trainer,
-                attempts=attempts,
-                clears=clears,
-                clear_rate=clears / attempts if attempts > 0 else 0,
+                entered=entered,
+                survived=survived,
+                survival_rate=survived / entered if entered > 0 else 0,
             )
         )
 
