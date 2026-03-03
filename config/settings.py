@@ -28,6 +28,7 @@ CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["https://questl
 
 # Application definition
 INSTALLED_APPS = [
+    "corsheaders",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -49,6 +50,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -123,6 +125,10 @@ CACHES = {
 IGDB_CLIENT_ID = env("TWITCH_CLIENT_ID", default="")
 IGDB_CLIENT_SECRET = env("TWITCH_CLIENT_SECRET", default="")
 IGDB_RATE_LIMIT = 4  # requests per second (free tier limit)
+
+# CORS
+CORS_ALLOW_ALL_ORIGINS = True
+CORS_URLS_REGEX = r"^/api/.*$"
 
 # API Authentication
 API_KEY = env("API_KEY", default="")
