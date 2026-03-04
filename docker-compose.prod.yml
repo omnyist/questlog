@@ -11,15 +11,6 @@ services:
     ports:
       - "5433:5432"
 
-  redis:
-    image: redis:alpine
-    restart: unless-stopped
-    ports:
-      - "6380:6379"
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
-
   server:
     build:
       context: .
@@ -27,12 +18,11 @@ services:
     restart: unless-stopped
     depends_on:
       - db
-      - redis
     env_file:
       - .env
     environment:
       - DATABASE_URL=postgresql://questlog:questlog@db:5432/questlog
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://synthcore-redis-1:6379/2
     ports:
       - "7176:7176"
     networks:
@@ -49,4 +39,3 @@ networks:
 
 volumes:
   postgres_data:
-  redis_data:

@@ -8,7 +8,7 @@ env:
   DEBUG: False
   ALLOWED_HOSTS: "questlog.omnyist.com,questlog-server-1,saya,localhost"
   DATABASE_URL: postgresql://questlog:questlog@db:5432/questlog
-  REDIS_URL: redis://redis:6379/0
+  REDIS_URL: redis://synthcore-redis-1:6379/2
 
 jobs:
   deploy:
@@ -35,7 +35,7 @@ jobs:
 
     - name: Deploy containers
       run: |
-        docker compose -f docker-compose.prod.yml up --build --force-recreate -d --remove-orphans
+        docker compose -f docker-compose.prod.yml up --build -d --remove-orphans
 
     - name: Wait for services to be ready
       run: |

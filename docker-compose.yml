@@ -20,7 +20,7 @@ services:
       - db
     environment:
       - DATABASE_URL=postgresql://questlog:questlog@db:5432/questlog
-      - REDIS_URL=redis://synthfunc-redis-1:6379/2
+      - REDIS_URL=redis://synthcore-redis-1:6379/2
       - DEBUG=True
       - SECRET_KEY=dev-secret-key-change-in-production
     volumes:
