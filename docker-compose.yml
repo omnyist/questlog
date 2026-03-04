@@ -9,16 +9,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5433:5432"  # Different port from Synthform
-
-  redis:
-    image: redis:alpine
-    restart: unless-stopped
-    ports:
-      - "6380:6379"  # Different port from Synthform
-    command: redis-server --appendonly yes
-    volumes:
-      - redis_data:/data
+      - "5433:5432"
 
   server:
     build:
@@ -27,20 +18,26 @@ services:
     restart: unless-stopped
     depends_on:
       - db
-      - redis
     environment:
       - DATABASE_URL=postgresql://questlog:questlog@db:5432/questlog
-      - REDIS_URL=redis://redis:6379/0
+      - REDIS_URL=redis://synthfunc-redis-1:6379/2
       - DEBUG=True
       - SECRET_KEY=dev-secret-key-change-in-production
     volumes:
       - .:/app
     ports:
       - "7176:7176"
+    networks:
+      - default
+      - synth
     command: >
       sh -c "uv run python manage.py migrate &&
              uv run python manage.py runserver 0.0.0.0:7176"
 
+networks:
+  default:
+  synth:
+    external: true
+
 volumes:
   postgres_data:
-  redis_data:
