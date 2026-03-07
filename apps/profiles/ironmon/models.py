@@ -65,10 +65,6 @@ class Run(models.Model):
         ordering = ["-seed_number"]
 
     def __str__(self):
-        if self.is_victory:
-            return f"Seed {self.seed_number} ✓"
-        if self.highest_checkpoint:
-            return f"Seed {self.seed_number} → {self.highest_checkpoint.name}"
         return f"Seed {self.seed_number}"
 
 

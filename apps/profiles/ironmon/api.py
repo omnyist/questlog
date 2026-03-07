@@ -2,25 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from django.conf import settings
 from django.db.models import Count
 from django.db.models import Q
 from ninja import Router
 from ninja import Schema
-from ninja.security import HttpBearer
+
+from config.auth import ApiKeyAuth
 
 from .models import Challenge
 from .models import Checkpoint
 from .models import CheckpointResult
 from .models import Run
-
-
-class ApiKeyAuth(HttpBearer):
-    def authenticate(self, request, token):
-        if token and token == settings.API_KEY:
-            return token
-        return None
-
 
 router = Router(tags=["IronMON"])
 
@@ -58,17 +50,63 @@ class RunListSchema(Schema):
     total: int
 
 
+# Helpers
+def _resolve_challenge(slug: str | None) -> Challenge | None:
+    """Look up a challenge by slug, or fall back to the first one."""
+    if slug:
+        try:
+            return Challenge.objects.get(slug=slug)
+        except Challenge.DoesNotExist:
+            return None
+    return Challenge.objects.first()
+
+
+def _compute_checkpoint_stats(
+    challenge: Challenge, total_runs: int
+) -> list[CheckpointStatSchema]:
+    """Compute entered/survived/survival_rate for all checkpoints in one query.
+
+    "entered" = runs that entered this stage (cleared the previous checkpoint,
+    or all runs for the first checkpoint).
+    "survived" = runs that cleared this checkpoint.
+    """
+    checkpoints = (
+        Checkpoint.objects.filter(challenge=challenge)
+        .annotate(
+            survived=Count(
+                "results",
+                filter=Q(results__run__challenge=challenge, results__cleared=True),
+            )
+        )
+        .order_by("order")
+    )
+    stats = []
+    prev_survived = total_runs
+    for cp in checkpoints:
+        entered = prev_survived
+        stats.append(
+            CheckpointStatSchema(
+                order=cp.order,
+                name=cp.name,
+                trainer=cp.trainer,
+                entered=entered,
+                survived=cp.survived,
+                survival_rate=cp.survived / entered if entered > 0 else 0,
+            )
+        )
+        prev_survived = cp.survived
+    return stats
+
+
 # Endpoints
-@router.get("/ironmon/stats", response=StatsSchema)
+@router.get("/ironmon/stats", response={200: StatsSchema, 404: dict})
 def get_stats(request, challenge: str | None = None):
     """Aggregate stats: total seeds, victories, clear rates per checkpoint."""
-    # Get challenge
-    if challenge:
-        ch = Challenge.objects.get(slug=challenge)
-    else:
-        ch = Challenge.objects.first()
+    ch = _resolve_challenge(challenge)
 
     if not ch:
+        if challenge:
+            return 404, {"detail": f"Challenge '{challenge}' not found"}
         return StatsSchema(
             challenge="",
             total_runs=0,
@@ -83,36 +121,13 @@ def get_stats(request, challenge: str | None = None):
     victories = runs.filter(is_victory=True).count()
     runs_with_results = runs.filter(highest_checkpoint__isnull=False).count()
 
-    # Checkpoint stats
-    # "entered" = runs that entered this stage (cleared the previous checkpoint, or all runs for the first)
-    # "survived" = runs that cleared this checkpoint
-    checkpoint_stats = []
-    all_checkpoints = list(ch.checkpoints.all())
-    for i, cp in enumerate(all_checkpoints):
-        if i == 0:
-            entered = total_runs
-        else:
-            prev_cp = all_checkpoints[i - 1]
-            entered = prev_cp.results.filter(run__challenge=ch, cleared=True).count()
-        survived = cp.results.filter(run__challenge=ch, cleared=True).count()
-        checkpoint_stats.append(
-            CheckpointStatSchema(
-                order=cp.order,
-                name=cp.name,
-                trainer=cp.trainer,
-                entered=entered,
-                survived=survived,
-                survival_rate=survived / entered if entered > 0 else 0,
-            )
-        )
-
     return StatsSchema(
         challenge=ch.name,
         total_runs=total_runs,
         victories=victories,
         victory_rate=victories / total_runs if total_runs > 0 else 0,
         runs_with_results=runs_with_results,
-        checkpoints=checkpoint_stats,
+        checkpoints=_compute_checkpoint_stats(ch, total_runs),
     )
 
 
@@ -143,40 +158,18 @@ def list_runs(request, challenge: str | None = None, limit: int = 50, offset: in
     )
 
 
-@router.get("/ironmon/checkpoints/stats", response=list[CheckpointStatSchema])
+@router.get("/ironmon/checkpoints/stats", response={200: list[CheckpointStatSchema], 404: dict})
 def checkpoint_stats(request, challenge: str | None = None):
     """Clear rates per checkpoint - the 'wall' chart."""
-    if challenge:
-        ch = Challenge.objects.get(slug=challenge)
-    else:
-        ch = Challenge.objects.first()
+    ch = _resolve_challenge(challenge)
 
     if not ch:
+        if challenge:
+            return 404, {"detail": f"Challenge '{challenge}' not found"}
         return []
 
-    runs = Run.objects.filter(challenge=ch)
-    total_runs = runs.count()
-    all_checkpoints = list(ch.checkpoints.all())
-    stats = []
-    for i, cp in enumerate(all_checkpoints):
-        if i == 0:
-            entered = total_runs
-        else:
-            prev_cp = all_checkpoints[i - 1]
-            entered = prev_cp.results.filter(run__challenge=ch, cleared=True).count()
-        survived = cp.results.filter(run__challenge=ch, cleared=True).count()
-        stats.append(
-            CheckpointStatSchema(
-                order=cp.order,
-                name=cp.name,
-                trainer=cp.trainer,
-                entered=entered,
-                survived=survived,
-                survival_rate=survived / entered if entered > 0 else 0,
-            )
-        )
-
-    return stats
+    total_runs = Run.objects.filter(challenge=ch).count()
+    return _compute_checkpoint_stats(ch, total_runs)
 
 
 # --- Read endpoint for challenge details ---
@@ -233,10 +226,13 @@ class RunResponseSchema(Schema):
     created: bool
 
 
-@router.post("/ironmon/runs", response=RunResponseSchema, auth=ApiKeyAuth())
+@router.post("/ironmon/runs", response={200: RunResponseSchema, 404: dict}, auth=ApiKeyAuth())
 def create_run(request, payload: CreateRunSchema):
     """Create or get a run. Idempotent by seed_number."""
-    ch = Challenge.objects.get(slug=payload.challenge_slug)
+    try:
+        ch = Challenge.objects.get(slug=payload.challenge_slug)
+    except Challenge.DoesNotExist:
+        return 404, {"detail": f"Challenge '{payload.challenge_slug}' not found"}
     run, created = Run.objects.get_or_create(
         seed_number=payload.seed_number,
         defaults={"challenge": ch},
@@ -262,18 +258,24 @@ class CheckpointResultResponseSchema(Schema):
 
 @router.post(
     "/ironmon/runs/{seed_number}/results",
-    response=CheckpointResultResponseSchema,
+    response={200: CheckpointResultResponseSchema, 404: dict},
     auth=ApiKeyAuth(),
 )
 def record_checkpoint(request, seed_number: int, payload: RecordCheckpointSchema):
     """Record a checkpoint clear for a run. Updates highest_checkpoint."""
-    run = Run.objects.select_related("challenge", "highest_checkpoint").get(
-        seed_number=seed_number,
-    )
-    checkpoint = Checkpoint.objects.get(
-        challenge=run.challenge,
-        name=payload.checkpoint_name,
-    )
+    try:
+        run = Run.objects.select_related("challenge", "highest_checkpoint").get(
+            seed_number=seed_number,
+        )
+    except Run.DoesNotExist:
+        return 404, {"detail": f"Run {seed_number} not found"}
+    try:
+        checkpoint = Checkpoint.objects.get(
+            challenge=run.challenge,
+            name=payload.checkpoint_name,
+        )
+    except Checkpoint.DoesNotExist:
+        return 404, {"detail": f"Checkpoint '{payload.checkpoint_name}' not found"}
     result, created = CheckpointResult.objects.get_or_create(
         run=run,
         checkpoint=checkpoint,
