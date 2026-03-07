@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime
 
 from django.db.models import Count
-from django.db.models import Q
 from ninja import Router
 from ninja import Schema
 
@@ -66,18 +65,13 @@ def _compute_checkpoint_stats(
 ) -> list[CheckpointStatSchema]:
     """Compute entered/survived/survival_rate for all checkpoints in one query.
 
-    "entered" = runs that entered this stage (cleared the previous checkpoint,
+    "entered" = runs that entered this stage (survived the previous checkpoint,
     or all runs for the first checkpoint).
-    "survived" = runs that cleared this checkpoint.
+    "survived" = runs that have a result for this checkpoint (existence = cleared).
     """
     checkpoints = (
         Checkpoint.objects.filter(challenge=challenge)
-        .annotate(
-            survived=Count(
-                "results",
-                filter=Q(results__run__challenge=challenge, results__cleared=True),
-            )
-        )
+        .annotate(survived=Count("results"))
         .order_by("order")
     )
     stats = []
@@ -252,7 +246,6 @@ class CheckpointResultResponseSchema(Schema):
     seed_number: int
     checkpoint: str
     checkpoint_order: int
-    cleared: bool
     created: bool
 
 
@@ -279,7 +272,6 @@ def record_checkpoint(request, seed_number: int, payload: RecordCheckpointSchema
     result, created = CheckpointResult.objects.get_or_create(
         run=run,
         checkpoint=checkpoint,
-        defaults={"cleared": True},
     )
 
     # Update denormalized highest_checkpoint if this one is further
@@ -291,6 +283,5 @@ def record_checkpoint(request, seed_number: int, payload: RecordCheckpointSchema
         seed_number=run.seed_number,
         checkpoint=checkpoint.name,
         checkpoint_order=checkpoint.order,
-        cleared=result.cleared,
         created=created,
     )

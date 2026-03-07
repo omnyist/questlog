@@ -81,7 +81,6 @@ class CheckpointResult(models.Model):
         on_delete=models.CASCADE,
         related_name="results",
     )
-    cleared = models.BooleanField()
     timestamp = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -89,5 +88,4 @@ class CheckpointResult(models.Model):
         ordering = ["checkpoint__order"]
 
     def __str__(self):
-        status = "✓" if self.cleared else "✗"
-        return f"{self.checkpoint.name}: {status}"
+        return self.checkpoint.name

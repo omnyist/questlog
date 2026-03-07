@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from django.contrib import admin
 from django.db.models import Count
-from django.db.models import Q
 
 from .models import Challenge
 from .models import Checkpoint
@@ -20,7 +19,7 @@ class CheckpointInline(admin.TabularInline):
 class CheckpointResultInline(admin.TabularInline):
     model = CheckpointResult
     extra = 0
-    fields = ["checkpoint", "cleared", "timestamp"]
+    fields = ["checkpoint", "timestamp"]
     readonly_fields = ["timestamp"]
     ordering = ["checkpoint__order"]
 
@@ -62,18 +61,12 @@ class CheckpointAdmin(admin.ModelAdmin):
         return (
             super()
             .get_queryset(request)
-            .annotate(
-                _total_results=Count("results"),
-                _cleared_results=Count("results", filter=Q(results__cleared=True)),
-            )
+            .annotate(_total_results=Count("results"))
         )
 
-    @admin.display(description="Clear Rate")
+    @admin.display(description="Clears")
     def clear_rate(self, obj):
-        if obj._total_results == 0:
-            return "—"
-        rate = 100 * obj._cleared_results / obj._total_results
-        return f"{obj._cleared_results}/{obj._total_results} ({rate:.1f}%)"
+        return obj._total_results
 
 
 @admin.register(Run)
@@ -88,8 +81,8 @@ class RunAdmin(admin.ModelAdmin):
 
 @admin.register(CheckpointResult)
 class CheckpointResultAdmin(admin.ModelAdmin):
-    list_display = ["run", "checkpoint", "cleared", "timestamp"]
-    list_filter = ["cleared", "checkpoint__challenge", "checkpoint"]
+    list_display = ["run", "checkpoint", "timestamp"]
+    list_filter = ["checkpoint__challenge", "checkpoint"]
     list_select_related = ["run__highest_checkpoint", "checkpoint"]
     search_fields = ["run__seed_number"]
     readonly_fields = ["timestamp"]

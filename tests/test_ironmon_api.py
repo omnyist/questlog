@@ -152,7 +152,6 @@ class TestRecordCheckpoint:
         assert data["seed_number"] == 100
         assert data["checkpoint"] == "Brock"
         assert data["checkpoint_order"] == 1
-        assert data["cleared"] is True
         assert data["created"] is True
 
         assert CheckpointResult.objects.filter(run=run).count() == 1
