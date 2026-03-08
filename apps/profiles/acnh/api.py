@@ -29,6 +29,7 @@ class EncounterSchema(Schema):
     timestamp: datetime
     recruited: bool
     notes: str
+    encounters: int
 
 
 class HuntSchema(Schema):
@@ -66,6 +67,15 @@ def get_latest_hunt(request):
     if not hunt:
         return HuntResponseSchema(hunt=None)
 
+    # Batch-fetch encounter counts for all villagers in the recent encounters
+    villager_ids = [enc.villager_id for enc in hunt.recent_encounters]
+    seen_counts = dict(
+        Encounter.objects.filter(villager_id__in=villager_ids)
+        .values_list("villager_id")
+        .annotate(count=Count("id"))
+        .values_list("villager_id", "count")
+    )
+
     return HuntResponseSchema(
         hunt=HuntSchema(
             id=str(hunt.id),
@@ -87,6 +97,7 @@ def get_latest_hunt(request):
                     timestamp=enc.timestamp,
                     recruited=enc.recruited,
                     notes=enc.notes,
+                    encounters=seen_counts.get(enc.villager_id, 1),
                 )
                 for enc in hunt.recent_encounters
             ],
