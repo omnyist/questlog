@@ -53,6 +53,7 @@ def get_latest_hunt(request):
     hunt = (
         VillagerHunt.objects.select_related("target_villager", "result_villager")
         .annotate(total_encounters=Count("encounters"))
+        .order_by("-date")
         .prefetch_related(
             Prefetch(
                 "encounters",
