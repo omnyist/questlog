@@ -71,11 +71,11 @@ class CheckpointAdmin(admin.ModelAdmin):
 
 @admin.register(Run)
 class RunAdmin(admin.ModelAdmin):
-    list_display = ["seed_number", "challenge", "highest_checkpoint", "is_victory", "started_at"]
+    list_display = ["seed_number", "challenge", "highest_checkpoint", "is_victory", "defeated_by", "started_at"]
     list_filter = ["challenge", "is_victory"]
     list_select_related = ["challenge", "highest_checkpoint"]
     search_fields = ["seed_number"]
-    readonly_fields = ["seed_number", "started_at"]
+    readonly_fields = ["seed_number", "defeated_by", "started_at"]
     inlines = [CheckpointResultInline]
 
 

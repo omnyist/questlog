@@ -41,6 +41,7 @@ class RunSchema(Schema):
     highest_checkpoint: str | None
     highest_checkpoint_order: int | None
     is_victory: bool
+    defeated_by: dict | None
     started_at: datetime
 
 
@@ -144,6 +145,7 @@ def list_runs(request, challenge: str | None = None, limit: int = 50, offset: in
                 highest_checkpoint=run.highest_checkpoint.name if run.highest_checkpoint else None,
                 highest_checkpoint_order=run.highest_checkpoint.order if run.highest_checkpoint else None,
                 is_victory=run.is_victory,
+                defeated_by=run.defeated_by,
                 started_at=run.started_at,
             )
             for run in runs
@@ -284,4 +286,52 @@ def record_checkpoint(request, seed_number: int, payload: RecordCheckpointSchema
         checkpoint=checkpoint.name,
         checkpoint_order=checkpoint.order,
         created=created,
+    )
+
+
+class RecordDefeatSchema(Schema):
+    pokemon: str
+    pokemon_id: int | None = None
+    level: int | None = None
+    trainer: str | None = None
+    is_wild: bool = False
+
+
+class DefeatResponseSchema(Schema):
+    seed_number: int
+    defeated_by: dict | None
+    recorded: bool
+
+
+@router.post(
+    "/ironmon/runs/{seed_number}/defeat",
+    response=DefeatResponseSchema,
+    auth=ApiKeyAuth(),
+)
+def record_defeat(request, seed_number: int, payload: RecordDefeatSchema):
+    """Record what defeated the player. Idempotent — first death is final."""
+    run = Run.objects.get(seed_number=seed_number)
+
+    if run.defeated_by is not None:
+        return DefeatResponseSchema(
+            seed_number=run.seed_number,
+            defeated_by=run.defeated_by,
+            recorded=False,
+        )
+
+    defeated_by = {"pokemon": payload.pokemon, "is_wild": payload.is_wild}
+    if payload.pokemon_id is not None:
+        defeated_by["pokemon_id"] = payload.pokemon_id
+    if payload.level is not None:
+        defeated_by["level"] = payload.level
+    if payload.trainer is not None:
+        defeated_by["trainer"] = payload.trainer
+
+    run.defeated_by = defeated_by
+    run.save(update_fields=["defeated_by"])
+
+    return DefeatResponseSchema(
+        seed_number=run.seed_number,
+        defeated_by=run.defeated_by,
+        recorded=True,
     )

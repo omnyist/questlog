@@ -60,6 +60,7 @@ class Run(models.Model):
         related_name="+",
     )
     is_victory = models.BooleanField(default=False)
+    defeated_by = models.JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ["-seed_number"]

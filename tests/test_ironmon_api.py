@@ -230,3 +230,91 @@ class TestRecordCheckpoint:
             content_type="application/json",
         )
         assert response.status_code == 401
+
+
+# --- Defeat recording ---
+
+
+@pytest.mark.django_db
+class TestRecordDefeat:
+    def test_record_defeat(self, api_client, auth_headers, run):
+        response = api_client.post(
+            f"/api/ironmon/runs/{run.seed_number}/defeat",
+            data={
+                "pokemon": "Onix",
+                "pokemon_id": 95,
+                "level": 14,
+                "trainer": "Leader Brock",
+                "is_wild": False,
+            },
+            content_type="application/json",
+            **auth_headers,
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["seed_number"] == 100
+        assert data["recorded"] is True
+        assert data["defeated_by"]["pokemon"] == "Onix"
+        assert data["defeated_by"]["pokemon_id"] == 95
+        assert data["defeated_by"]["level"] == 14
+        assert data["defeated_by"]["trainer"] == "Leader Brock"
+        assert data["defeated_by"]["is_wild"] is False
+
+        run.refresh_from_db()
+        assert run.defeated_by["pokemon"] == "Onix"
+
+    def test_record_defeat_idempotent(self, api_client, auth_headers, run):
+        api_client.post(
+            f"/api/ironmon/runs/{run.seed_number}/defeat",
+            data={"pokemon": "Onix", "level": 14},
+            content_type="application/json",
+            **auth_headers,
+        )
+        response = api_client.post(
+            f"/api/ironmon/runs/{run.seed_number}/defeat",
+            data={"pokemon": "Geodude", "level": 12},
+            content_type="application/json",
+            **auth_headers,
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["recorded"] is False
+        assert data["defeated_by"]["pokemon"] == "Onix"
+
+    def test_record_defeat_minimal_payload(self, api_client, auth_headers, run):
+        response = api_client.post(
+            f"/api/ironmon/runs/{run.seed_number}/defeat",
+            data={"pokemon": "Pidgey"},
+            content_type="application/json",
+            **auth_headers,
+        )
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["recorded"] is True
+        assert data["defeated_by"]["pokemon"] == "Pidgey"
+        assert data["defeated_by"]["is_wild"] is False
+        assert "pokemon_id" not in data["defeated_by"]
+        assert "level" not in data["defeated_by"]
+        assert "trainer" not in data["defeated_by"]
+
+    def test_list_runs_includes_defeated_by(self, api_client, challenge, run):
+        run.defeated_by = {"pokemon": "Onix", "level": 14, "is_wild": False}
+        run.save(update_fields=["defeated_by"])
+
+        response = api_client.get("/api/ironmon/runs")
+        assert response.status_code == 200
+
+        data = response.json()
+        assert len(data["runs"]) == 1
+        assert data["runs"][0]["defeated_by"]["pokemon"] == "Onix"
+
+    def test_record_defeat_rejects_no_auth(self, api_client, run):
+        response = api_client.post(
+            f"/api/ironmon/runs/{run.seed_number}/defeat",
+            data={"pokemon": "Onix"},
+            content_type="application/json",
+        )
+        assert response.status_code == 401
