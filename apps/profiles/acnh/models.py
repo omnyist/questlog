@@ -60,6 +60,12 @@ class Profile(models.Model):
         blank=True,
     )
     native_fruit = models.CharField(max_length=50, blank=True)
+    residents = models.ManyToManyField(
+        Villager,
+        blank=True,
+        related_name="islands",
+        help_text="Current villagers living on the island",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

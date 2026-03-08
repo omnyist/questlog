@@ -53,6 +53,7 @@ class EncounterInline(admin.TabularInline):
 class ProfileAdmin(admin.ModelAdmin):
     list_display = ["__str__", "island_name", "player_name", "hemisphere"]
     readonly_fields = ["id", "created_at", "updated_at"]
+    autocomplete_fields = ["residents"]
     inlines = [VillagerHuntInline]
 
 
