@@ -5,6 +5,7 @@ from datetime import datetime
 from ninja import Router, Schema
 
 from apps.library.models import Work
+from config.auth import ApiKeyAuth
 
 from .models import Entry, List, ListActivity
 
@@ -80,7 +81,7 @@ def list_lists(request):
     ]
 
 
-@router.post("/lists", response=ListSchema)
+@router.post("/lists", response=ListSchema, auth=ApiKeyAuth())
 def create_list(request, data: ListCreateSchema):
     """Create a new list."""
     lst = List.objects.create(
@@ -128,7 +129,7 @@ def get_list(request, slug: str):
 
 
 # Entry endpoints
-@router.post("/lists/{slug}/entries", response={200: EntrySchema, 404: dict})
+@router.post("/lists/{slug}/entries", response={200: EntrySchema, 404: dict}, auth=ApiKeyAuth())
 def add_entry(request, slug: str, data: EntryCreateSchema):
     """Add a work to a list."""
     try:
@@ -157,7 +158,7 @@ def add_entry(request, slug: str, data: EntryCreateSchema):
     )
 
 
-@router.post("/lists/{slug}/entries/bulk", response=BulkEntryResultSchema)
+@router.post("/lists/{slug}/entries/bulk", response=BulkEntryResultSchema, auth=ApiKeyAuth())
 def bulk_add_entries(request, slug: str, data: BulkEntryCreateSchema):
     """Bulk add works to a list."""
     lst = List.objects.get(slug=slug)

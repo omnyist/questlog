@@ -10,11 +10,23 @@ from apps.library.models import Work
 from apps.lists.models import Entry
 from apps.lists.models import List
 
+TEST_API_KEY = "test-api-key"
+
 
 @pytest.fixture
 def api_client():
     """Django test client for API requests."""
     return Client()
+
+
+@pytest.fixture(autouse=True)
+def _set_api_key(settings):
+    settings.API_KEY = TEST_API_KEY
+
+
+@pytest.fixture
+def auth_headers():
+    return {"HTTP_AUTHORIZATION": f"Bearer {TEST_API_KEY}"}
 
 
 @pytest.fixture

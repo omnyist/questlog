@@ -48,12 +48,13 @@ class TestGenreAPI:
         assert data[0]["parent_id"] is None
         assert "id" in data[0]
 
-    def test_create_genre(self, api_client, db):
+    def test_create_genre(self, api_client, auth_headers, db):
         """POST /api/genres creates genre and returns correct schema."""
         response = api_client.post(
             "/api/genres",
             data={"name": "Action", "slug": "action", "igdb_id": 1},
             content_type="application/json",
+            **auth_headers,
         )
         assert response.status_code == 200
 

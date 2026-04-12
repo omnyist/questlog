@@ -5,6 +5,8 @@ from datetime import datetime
 from django.db import IntegrityError
 from ninja import Router, Schema
 
+from config.auth import ApiKeyAuth
+
 from .models import Edition, Franchise, Genre, Work
 
 router = Router(tags=["library"])
@@ -105,7 +107,7 @@ def list_genres(request):
     ]
 
 
-@router.post("/genres", response=GenreSchema)
+@router.post("/genres", response=GenreSchema, auth=ApiKeyAuth())
 def create_genre(request, data: GenreCreateSchema):
     """Create a new genre."""
     parent = None
@@ -182,7 +184,7 @@ def get_work(request, slug: str):
     )
 
 
-@router.put("/works/{slug}/genres", response={200: dict, 404: dict})
+@router.put("/works/{slug}/genres", response={200: dict, 404: dict}, auth=ApiKeyAuth())
 def update_work_genres(request, slug: str, data: WorkGenresUpdateSchema):
     """Update genres for a work."""
     try:
@@ -256,7 +258,7 @@ def get_edition(request, slug: str):
     )
 
 
-@router.post("/editions", response=EditionSchema)
+@router.post("/editions", response=EditionSchema, auth=ApiKeyAuth())
 def create_edition(request, data: EditionCreateSchema):
     """Create a new edition."""
     work = Work.objects.get(id=data.work_id)
@@ -333,7 +335,7 @@ class BulkImportResultSchema(Schema):
     errors: list[str]
 
 
-@router.post("/import", response=BulkImportResultSchema)
+@router.post("/import", response=BulkImportResultSchema, auth=ApiKeyAuth())
 def bulk_import(request, data: BulkImportSchema):
     """Bulk import franchises, works, and editions."""
     result = {

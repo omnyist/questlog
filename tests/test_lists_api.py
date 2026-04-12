@@ -37,7 +37,7 @@ class TestListsAPI:
         data = response.json()
         assert data[0]["entry_count"] == 1
 
-    def test_create_list(self, api_client, db):
+    def test_create_list(self, api_client, auth_headers, db):
         """POST /api/lists creates list and returns correct schema."""
         response = api_client.post(
             "/api/lists",
@@ -48,6 +48,7 @@ class TestListsAPI:
                 "is_ranked": True,
             },
             content_type="application/json",
+            **auth_headers,
         )
         assert response.status_code == 200
 
@@ -82,12 +83,13 @@ class TestListsAPI:
 class TestEntriesAPI:
     """Tests for /api/lists/{slug}/entries endpoints."""
 
-    def test_add_entry(self, api_client, game_list, standalone_work):
+    def test_add_entry(self, api_client, auth_headers, game_list, standalone_work):
         """POST /api/lists/{slug}/entries adds work to list."""
         response = api_client.post(
             "/api/lists/completed-rpgs/entries",
             data={"work_slug": "bastion", "position": 1, "notes": "Great game!"},
             content_type="application/json",
+            **auth_headers,
         )
         assert response.status_code == 200
 
@@ -99,16 +101,17 @@ class TestEntriesAPI:
         assert "id" in data
         assert "work_id" in data
 
-    def test_add_entry_work_not_found(self, api_client, game_list):
+    def test_add_entry_work_not_found(self, api_client, auth_headers, game_list):
         """POST /api/lists/{slug}/entries returns 404 for unknown work."""
         response = api_client.post(
             "/api/lists/completed-rpgs/entries",
             data={"work_slug": "unknown-work"},
             content_type="application/json",
+            **auth_headers,
         )
         assert response.status_code == 404
 
-    def test_bulk_add_entries(self, api_client, game_list, work, standalone_work):
+    def test_bulk_add_entries(self, api_client, auth_headers, game_list, work, standalone_work):
         """POST /api/lists/{slug}/entries/bulk adds multiple works."""
         response = api_client.post(
             "/api/lists/completed-rpgs/entries/bulk",
@@ -119,6 +122,7 @@ class TestEntriesAPI:
                 ]
             },
             content_type="application/json",
+            **auth_headers,
         )
         assert response.status_code == 200
 
@@ -127,7 +131,7 @@ class TestEntriesAPI:
         assert data["skipped"] == 0
         assert data["errors"] == []
 
-    def test_bulk_add_entries_skips_duplicates(self, api_client, game_list, list_entry, standalone_work):
+    def test_bulk_add_entries_skips_duplicates(self, api_client, auth_headers, game_list, list_entry, standalone_work):
         """POST /api/lists/{slug}/entries/bulk skips existing entries."""
         response = api_client.post(
             "/api/lists/completed-rpgs/entries/bulk",
@@ -138,6 +142,7 @@ class TestEntriesAPI:
                 ]
             },
             content_type="application/json",
+            **auth_headers,
         )
         assert response.status_code == 200
 
@@ -146,7 +151,7 @@ class TestEntriesAPI:
         assert data["skipped"] == 1
         assert data["errors"] == []
 
-    def test_bulk_add_entries_reports_errors(self, api_client, game_list, work):
+    def test_bulk_add_entries_reports_errors(self, api_client, auth_headers, game_list, work):
         """POST /api/lists/{slug}/entries/bulk reports errors for unknown works."""
         response = api_client.post(
             "/api/lists/completed-rpgs/entries/bulk",
@@ -157,6 +162,7 @@ class TestEntriesAPI:
                 ]
             },
             content_type="application/json",
+            **auth_headers,
         )
         assert response.status_code == 200
 
@@ -177,13 +183,14 @@ class TestActivityAPI:
         assert response.status_code == 200
         assert response.json() == []
 
-    def test_get_activity_after_add(self, api_client, game_list, standalone_work):
+    def test_get_activity_after_add(self, api_client, auth_headers, game_list, standalone_work):
         """GET /api/lists/{slug}/activity shows added entry."""
         # Add an entry (triggers signal)
         api_client.post(
             "/api/lists/completed-rpgs/entries",
             data={"work_slug": "bastion"},
             content_type="application/json",
+            **auth_headers,
         )
 
         response = api_client.get("/api/lists/completed-rpgs/activity")
