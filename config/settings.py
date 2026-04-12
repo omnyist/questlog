@@ -126,6 +126,10 @@ IGDB_CLIENT_ID = env("TWITCH_CLIENT_ID", default="")
 IGDB_CLIENT_SECRET = env("TWITCH_CLIENT_SECRET", default="")
 IGDB_RATE_LIMIT = 4  # requests per second (free tier limit)
 
+# Bungie API
+BUNGIE_API_KEY = env("BUNGIE_API_KEY", default="")
+BUNGIE_RATE_LIMIT = 8  # requests per second (conservative vs ~25/sec observed)
+
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_URLS_REGEX = r"^/api/.*$"

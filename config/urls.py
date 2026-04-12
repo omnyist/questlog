@@ -8,6 +8,7 @@ from apps.integrations.api import router as integrations_router
 from apps.library.api import router as library_router
 from apps.lists.api import router as lists_router
 from apps.profiles.acnh.api import router as acnh_router
+from apps.profiles.destiny.api import router as destiny_router
 from apps.profiles.ironmon.api import router as ironmon_router
 
 api = NinjaAPI(
@@ -20,6 +21,7 @@ api.add_router("/", integrations_router)
 api.add_router("/", library_router)
 api.add_router("/", lists_router)
 api.add_router("/", acnh_router)
+api.add_router("/", destiny_router)
 api.add_router("/", ironmon_router)
 
 urlpatterns = [
