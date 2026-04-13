@@ -130,8 +130,10 @@ class Command(BaseCommand):
         asyncio.run(self._run(options))
 
     async def _run(self, options: dict) -> None:
+        from asgiref.sync import sync_to_async
+
         client = BungieClient()
-        work = self._get_or_create_work(options["work_slug"])
+        work = await self._get_or_create_work(options["work_slug"])
         profile = await self._get_profile(work, options)
 
         phase = options["phase"]
@@ -144,7 +146,7 @@ class Command(BaseCommand):
         if manifest_phase_ran:
             resolver = await self._phase_manifest(client)
         elif needs_manifest:
-            resolver = self._load_existing_manifest()
+            resolver = await self._load_existing_manifest()
 
         try:
             if run_all or phase == "profile":
@@ -161,8 +163,12 @@ class Command(BaseCommand):
             if run_all or phase == "activities":
                 if resolver is None:
                     resolver = await self._phase_manifest(client)
+                has_existing = await sync_to_async(
+                    Activity.objects.filter(profile=profile).exists,
+                    thread_sensitive=True,
+                )()
                 incremental = options["incremental"] or (
-                    not options["full"] and Activity.objects.filter(profile=profile).exists()
+                    not options["full"] and has_existing
                 )
                 await self._phase_activities(client, profile, resolver, incremental)
 
@@ -173,16 +179,19 @@ class Command(BaseCommand):
                 resolver.close()
 
         profile.last_synced = django_tz.now()
-        profile.save(update_fields=["last_synced", "updated_at"])
+        await sync_to_async(profile.save, thread_sensitive=True)(
+            update_fields=["last_synced", "updated_at"]
+        )
         self.stdout.write(self.style.SUCCESS("Archive complete."))
 
     # ---- setup helpers ----
 
-    def _get_or_create_work(self, slug: str) -> Work:
-        work, created = Work.objects.get_or_create(
-            slug=slug,
-            defaults={"name": "Destiny 2"},
-        )
+    async def _get_or_create_work(self, slug: str) -> Work:
+        from asgiref.sync import sync_to_async
+
+        work, created = await sync_to_async(
+            Work.objects.get_or_create, thread_sensitive=True
+        )(slug=slug, defaults={"name": "Destiny 2"})
         if created:
             self.stdout.write(self.style.SUCCESS(f"Created Work: {work.name}"))
         return work
@@ -222,8 +231,13 @@ class Command(BaseCommand):
     def _manifest_dir(self) -> Path:
         return Path(settings.BASE_DIR) / "data" / "destiny_manifest"
 
-    def _load_existing_manifest(self) -> ManifestResolver | None:
-        latest = ManifestCache.objects.order_by("-downloaded_at").first()
+    async def _load_existing_manifest(self) -> ManifestResolver | None:
+        from asgiref.sync import sync_to_async
+
+        latest = await sync_to_async(
+            ManifestCache.objects.order_by("-downloaded_at").first,
+            thread_sensitive=True,
+        )()
         if not latest or not latest.file_path:
             return None
         path = Path(latest.file_path)
