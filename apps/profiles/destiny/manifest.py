@@ -25,24 +25,29 @@ def signed_hash(h: int) -> int:
 def extract_manifest_if_zipped(source: Path) -> Path:
     """If the downloaded manifest is a zip, extract the SQLite file.
 
-    Returns the path to a usable SQLite file.
+    Bungie's manifest zip contains a file with the same name as the zip
+    itself, so we extract into a sibling `extracted/` directory to avoid
+    clobbering the source.
     """
     with source.open("rb") as f:
         magic = f.read(4)
 
-    if magic[:2] == b"PK":
-        with zipfile.ZipFile(source) as zf:
-            names = zf.namelist()
-            if not names:
-                raise ValueError(f"Empty manifest zip: {source}")
-            extract_dir = source.parent
-            extracted_name = names[0]
-            extracted_path = extract_dir / extracted_name
-            if not extracted_path.exists():
-                zf.extract(extracted_name, extract_dir)
-            return extracted_path
+    if magic[:2] != b"PK":
+        return source
 
-    return source
+    extract_dir = source.parent / "extracted"
+    extract_dir.mkdir(exist_ok=True)
+
+    with zipfile.ZipFile(source) as zf:
+        names = zf.namelist()
+        if not names:
+            raise ValueError(f"Empty manifest zip: {source}")
+        extracted_name = names[0]
+        extracted_path = extract_dir / extracted_name
+        if not extracted_path.exists() or extracted_path.stat().st_size == 0:
+            zf.extract(extracted_name, extract_dir)
+
+    return extracted_path
 
 
 class ManifestResolver:
