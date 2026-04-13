@@ -89,7 +89,7 @@ class BungieClient:
 
         await self.rate_limiter.acquire()
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             response = await client.get(
                 f"{self.BASE_URL}{path}",
                 headers={"X-API-Key": self.api_key},
@@ -127,7 +127,7 @@ class BungieClient:
         membership_type=-1 searches all platforms.
         """
         path = f"/Destiny2/SearchDestinyPlayerByBungieName/{membership_type}/"
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
             await self.rate_limiter.acquire()
             response = await client.post(
                 f"{self.BASE_URL}{path}",
