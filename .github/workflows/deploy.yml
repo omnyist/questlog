@@ -31,6 +31,10 @@ jobs:
         TWITCH_CLIENT_ID=${{ vars.TWITCH_CLIENT_ID }}
         TWITCH_CLIENT_SECRET=${{ secrets.TWITCH_CLIENT_SECRET }}
         BUNGIE_API_KEY=${{ secrets.BUNGIE_API_KEY }}
+        STEAM_API_KEY=${{ secrets.STEAM_API_KEY }}
+        STEAM_ID=${{ vars.STEAM_ID }}
+        WARFRAME_ACCOUNT_ID=${{ secrets.WARFRAME_ACCOUNT_ID }}
+        WARFRAME_PLATFORM=pc
         API_KEY=${{ secrets.API_KEY }}
         EOF
 

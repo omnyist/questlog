@@ -130,6 +130,15 @@ IGDB_RATE_LIMIT = 4  # requests per second (free tier limit)
 BUNGIE_API_KEY = env("BUNGIE_API_KEY", default="")
 BUNGIE_RATE_LIMIT = 8  # requests per second (conservative vs ~25/sec observed)
 
+# Steam API
+STEAM_API_KEY = env("STEAM_API_KEY", default="")
+STEAM_ID = env("STEAM_ID", default="")
+STEAM_RATE_LIMIT = 4  # requests per second
+
+# Warframe
+WARFRAME_ACCOUNT_ID = env("WARFRAME_ACCOUNT_ID", default="")
+WARFRAME_PLATFORM = env("WARFRAME_PLATFORM", default="pc")
+
 # CORS
 CORS_ALLOW_ALL_ORIGINS = True
 CORS_URLS_REGEX = r"^/api/.*$"
