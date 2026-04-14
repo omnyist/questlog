@@ -15,6 +15,11 @@ from apps.profiles.destiny.models import CarnageReport as DestinyCarnageReport
 from apps.profiles.destiny.models import CarnageReportEntry as DestinyCarnageReportEntry
 from apps.profiles.destiny.models import Character as DestinyCharacter
 from apps.profiles.destiny.models import Profile as DestinyProfile
+from apps.profiles.warframe.models import Affiliation as WarframeAffiliation
+from apps.profiles.warframe.models import MissionStat as WarframeMissionStat
+from apps.profiles.warframe.models import Profile as WarframeProfile
+from apps.profiles.warframe.models import Snapshot as WarframeSnapshot
+from apps.profiles.warframe.models import WeaponStat as WarframeWeaponStat
 
 TEST_API_KEY = "test-api-key"
 
@@ -227,3 +232,99 @@ def destiny_pgcr(db, destiny_raid_activity, destiny_profile):
         time_played_seconds=3200,
     )
     return report
+
+
+@pytest.fixture
+def warframe_work(db):
+    return Work.objects.create(name="Warframe", slug="warframe")
+
+
+@pytest.fixture
+def warframe_profile(db, warframe_work):
+    return WarframeProfile.objects.create(
+        work=warframe_work,
+        account_id="5b2d428bf2f2ebde1070a2b1",
+        display_name="Avalonstar",
+        platform="pc",
+        mastery_rank=11,
+        player_level=12,
+        title="/Lotus/Types/Items/Titles/SecondDreamTitle",
+        missions_completed=691,
+        missions_quit=35,
+        missions_failed=46,
+        time_played_seconds=429758,
+        pickup_count=59449,
+    )
+
+
+@pytest.fixture
+def warframe_weapon(db, warframe_profile):
+    return WarframeWeaponStat.objects.create(
+        profile=warframe_profile,
+        weapon_path="/Lotus/Weapons/MK1Series/MK1Kunai",
+        weapon_name="MK1 Kunai",
+        fired=196,
+        hits=76,
+        kills=24,
+        headshots=1,
+        assists=4,
+        equip_time_seconds=2583.72,
+        xp=544432,
+        accuracy=0.3878,
+        headshot_rate=0.0417,
+    )
+
+
+@pytest.fixture
+def warframe_weapons(db, warframe_profile):
+    """A small set of weapons with varied stats for sort/filter tests."""
+    return [
+        WarframeWeaponStat.objects.create(
+            profile=warframe_profile,
+            weapon_path=f"/Lotus/Weapons/Test/Weapon{i}",
+            weapon_name=f"Weapon {i}",
+            fired=1000 * (i + 1),
+            hits=800 * (i + 1),
+            kills=100 * (i + 1),
+            headshots=10 * (i + 1),
+            assists=5 * (i + 1),
+            equip_time_seconds=100.0 * (i + 1),
+            xp=10000 * (i + 1),
+            accuracy=0.8,
+            headshot_rate=0.1,
+        )
+        for i in range(5)
+    ]
+
+
+@pytest.fixture
+def warframe_mission(db, warframe_profile):
+    return WarframeMissionStat.objects.create(
+        profile=warframe_profile,
+        node_tag="SolNode27",
+        completes=42,
+    )
+
+
+@pytest.fixture
+def warframe_affiliation(db, warframe_profile):
+    return WarframeAffiliation.objects.create(
+        profile=warframe_profile,
+        syndicate_tag="CetusSyndicate",
+        standing=12931,
+        title_rank=1,
+    )
+
+
+@pytest.fixture
+def warframe_snapshot(db, warframe_profile):
+    return WarframeSnapshot.objects.create(
+        profile=warframe_profile,
+        trigger="manual",
+        mastery_rank=11,
+        time_played_seconds=429758,
+        missions_completed=691,
+        pickup_count=59449,
+        total_weapon_kills=34229,
+        weapons_tracked=188,
+    )

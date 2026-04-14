@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     "apps.profiles.umamusume",
     "apps.profiles.acnh",
     "apps.profiles.ironmon",
+    "apps.profiles.warframe",
 ]
 
 MIDDLEWARE = [

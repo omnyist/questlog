@@ -10,6 +10,7 @@ from apps.lists.api import router as lists_router
 from apps.profiles.acnh.api import router as acnh_router
 from apps.profiles.destiny.api import router as destiny_router
 from apps.profiles.ironmon.api import router as ironmon_router
+from apps.profiles.warframe.api import router as warframe_router
 
 api = NinjaAPI(
     title="Questlog API",
@@ -23,6 +24,7 @@ api.add_router("/", lists_router)
 api.add_router("/", acnh_router)
 api.add_router("/", destiny_router)
 api.add_router("/", ironmon_router)
+api.add_router("/", warframe_router)
 
 urlpatterns = [
     path("admin/", admin.site.urls),
