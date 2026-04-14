@@ -32,6 +32,23 @@ services:
       sh -c "uv run python manage.py migrate &&
              uv run daphne -b 0.0.0.0 -p 7176 config.asgi:application"
 
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - db
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://questlog:questlog@synthcore-postgres-1:5432/questlog
+      - REDIS_URL=redis://synthcore-redis-1:6379/2
+    networks:
+      - default
+      - synth
+    command: uv run celery -A config worker -l info -B
+
 networks:
   default:
   synth:
