@@ -14,6 +14,11 @@ app = Celery("questlog")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 app.autodiscover_tasks()
 
+# Python 3.13 changed dbm to use SQLite, which causes locking errors with
+# Celery beat's default PersistentScheduler + prefork. Since our schedule is
+# a static dict (not dynamic), the in-memory scheduler works fine.
+app.conf.beat_scheduler = "celery.beat:Scheduler"
+
 app.conf.beat_schedule = {
     "poll-steam-warframe": {
         "task": "apps.profiles.warframe.tasks.poll_steam_warframe",
