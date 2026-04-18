@@ -101,5 +101,6 @@ keep-runtime-typing = true
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "config.settings"
+asyncio_mode = "auto"
 python_files = ["test_*.py", "*_test.py"]
 addopts = "-v --tb=short"
