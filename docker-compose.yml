@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: questlog-server
     restart: unless-stopped
     environment:
       - DATABASE_URL=postgresql://questlog:questlog@synthcore-postgres:5432/questlog

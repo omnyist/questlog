@@ -15,6 +15,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: questlog-server
     restart: unless-stopped
     depends_on:
       - db
@@ -23,8 +24,6 @@ services:
     environment:
       - DATABASE_URL=postgresql://questlog:questlog@synthcore-postgres:5432/questlog
       - REDIS_URL=redis://synthcore-redis:6379/2
-    ports:
-      - "7176:7176"
     networks:
       - default
       - synth
@@ -36,6 +35,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    container_name: questlog-celery
     restart: unless-stopped
     depends_on:
       - db
