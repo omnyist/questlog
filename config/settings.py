@@ -4,27 +4,34 @@ import os
 from pathlib import Path
 
 import environ
+import sentry_sdk
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Environment
 env = environ.Env(
     DEBUG=(bool, False),
     SECRET_KEY=(str, "insecure-dev-key-change-in-production"),
     ALLOWED_HOSTS=(list, ["localhost", "127.0.0.1"]),
 )
 
-# SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = env("SECRET_KEY")
-
-# SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = env("DEBUG")
-
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
-# CSRF trusted origins (for Cloudflare proxy)
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["https://questlog.omnyist.com"])
+
+# Sentry (production only)
+if not DEBUG:
+    sentry_sdk.init(
+        dsn=env("SENTRY_DSN", default=""),
+        environment="production",
+        send_default_pii=True,
+        traces_sample_rate=0.1,
+        profiles_sample_rate=0.1,
+        before_send=lambda event, hint: event
+        if event.get("logger") != "django.security.DisallowedHost"
+        else None,
+    )
 
 # Application definition
 INSTALLED_APPS = [

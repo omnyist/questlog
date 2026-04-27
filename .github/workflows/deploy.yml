@@ -36,6 +36,7 @@ jobs:
         WARFRAME_ACCOUNT_ID=${{ secrets.WARFRAME_ACCOUNT_ID }}
         WARFRAME_PLATFORM=pc
         API_KEY=${{ secrets.API_KEY }}
+        SENTRY_DSN=${{ secrets.SENTRY_DSN }}
         EOF
 
     - name: Deploy containers
