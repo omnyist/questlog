@@ -1,24 +1,10 @@
 services:
-  db:
-    image: postgres:16
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: questlog
-      POSTGRES_USER: questlog
-      POSTGRES_PASSWORD: questlog
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5433:5432"
-
   server:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: questlog-server
     restart: unless-stopped
-    depends_on:
-      - db
     env_file:
       - .env
     environment:
@@ -39,8 +25,6 @@ services:
       dockerfile: Dockerfile
     container_name: questlog-celery
     restart: unless-stopped
-    depends_on:
-      - db
     env_file:
       - .env
     environment:
@@ -56,5 +40,3 @@ networks:
   synth:
     external: true
 
-volumes:
-  postgres_data:
