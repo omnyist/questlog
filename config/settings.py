@@ -94,6 +94,7 @@ DATABASES = {
         default="postgresql://questlog:questlog@localhost:5433/questlog",
     ),
 }
+DATABASES["default"]["OPTIONS"] = {"pool": True}
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
