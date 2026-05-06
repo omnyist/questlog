@@ -34,7 +34,7 @@ class WorkAdmin(admin.ModelAdmin):
 
 @admin.register(Edition)
 class EditionAdmin(admin.ModelAdmin):
-    list_display = ["name", "work", "edition_type", "release_date", "igdb_id"]
+    list_display = ["name", "work", "edition_type", "release_date", "igdb_id", "twitch_category_id"]
     list_filter = ["edition_type", "work__franchise"]
     search_fields = ["name", "slug", "work__name"]
     readonly_fields = ["id", "created_at", "updated_at", "last_synced"]

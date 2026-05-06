@@ -143,6 +143,7 @@ class Edition(models.Model):
 
     # IGDB data
     igdb_id = models.IntegerField(unique=True, null=True, blank=True)
+    twitch_category_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
     cover_url = models.URLField(blank=True)
     release_date = models.DateField(null=True, blank=True)
     summary = models.TextField(blank=True)

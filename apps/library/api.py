@@ -54,6 +54,7 @@ class EditionSchema(Schema):
     slug: str
     edition_type: str
     igdb_id: int | None = None
+    twitch_category_id: str | None = None
     cover_url: str | None = None
     release_date: str | None = None
     summary: str | None = None
@@ -74,6 +75,7 @@ class EditionCreateSchema(Schema):
     slug: str
     edition_type: str = "original"
     igdb_id: int | None = None
+    twitch_category_id: str | None = None
     cover_url: str | None = None
     release_date: str | None = None
     summary: str | None = None
@@ -175,6 +177,7 @@ def get_work(request, slug: str):
                 slug=e.slug,
                 edition_type=e.edition_type,
                 igdb_id=e.igdb_id,
+                twitch_category_id=e.twitch_category_id,
                 cover_url=e.cover_url or None,
                 release_date=e.release_date.isoformat() if e.release_date else None,
                 summary=e.summary or None,
@@ -258,6 +261,43 @@ def get_edition(request, slug: str):
     )
 
 
+@router.get("/editions/by-twitch/{twitch_category_id}", response={200: WorkDetailSchema, 404: dict})
+def get_work_by_twitch_category(request, twitch_category_id: str):
+    """Look up a Work by its Twitch category ID. Used by Synthfunc's PromptManager."""
+    try:
+        edition = Edition.objects.select_related("work__franchise").get(
+            twitch_category_id=twitch_category_id,
+        )
+    except Edition.DoesNotExist:
+        return 404, {"error": f"No edition found for Twitch category {twitch_category_id}"}
+
+    w = edition.work
+    return 200, WorkDetailSchema(
+        id=str(w.id),
+        name=w.name,
+        slug=w.slug,
+        franchise=FranchiseSchema(
+            id=str(w.franchise.id), name=w.franchise.name, slug=w.franchise.slug
+        ) if w.franchise else None,
+        original_release_year=w.original_release_year,
+        editions=[
+            EditionSchema(
+                id=str(e.id),
+                work_id=str(e.work_id),
+                name=e.name,
+                slug=e.slug,
+                edition_type=e.edition_type,
+                igdb_id=e.igdb_id,
+                twitch_category_id=e.twitch_category_id,
+                cover_url=e.cover_url or None,
+                release_date=e.release_date.isoformat() if e.release_date else None,
+                summary=e.summary or None,
+            )
+            for e in w.editions.all()
+        ],
+    )
+
+
 @router.post("/editions", response=EditionSchema, auth=ApiKeyAuth())
 def create_edition(request, data: EditionCreateSchema):
     """Create a new edition."""
@@ -273,6 +313,7 @@ def create_edition(request, data: EditionCreateSchema):
         slug=data.slug,
         edition_type=data.edition_type,
         igdb_id=data.igdb_id,
+        twitch_category_id=data.twitch_category_id,
         cover_url=data.cover_url or "",
         release_date=release_date,
         summary=data.summary or "",
@@ -287,6 +328,7 @@ def create_edition(request, data: EditionCreateSchema):
         slug=edition.slug,
         edition_type=edition.edition_type,
         igdb_id=edition.igdb_id,
+        twitch_category_id=edition.twitch_category_id,
         cover_url=edition.cover_url or None,
         release_date=edition.release_date.isoformat() if edition.release_date else None,
         summary=edition.summary or None,
@@ -312,6 +354,7 @@ class BulkEditionSchema(Schema):
     slug: str
     edition_type: str = "original"
     igdb_id: int | None = None
+    twitch_category_id: str | None = None
     cover_url: str | None = None
     release_date: str | None = None
     summary: str | None = None
@@ -404,6 +447,7 @@ def bulk_import(request, data: BulkImportSchema):
                     "name": e_data.name,
                     "edition_type": e_data.edition_type,
                     "igdb_id": e_data.igdb_id,
+                    "twitch_category_id": e_data.twitch_category_id,
                     "cover_url": e_data.cover_url or "",
                     "release_date": release_date,
                     "summary": e_data.summary or "",
