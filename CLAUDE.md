@@ -16,7 +16,7 @@ The separation is intentional: Questlog could eventually be extracted as a stand
 ## Tech Stack
 
 - Python 3.13+
-- Django 5.2+ with Django Ninja for REST API
+- Django 6.0+ with Django Ninja for REST API
 - PostgreSQL 16
 - Redis (for caching, future Celery tasks)
 - Docker Compose for local development
