@@ -171,7 +171,12 @@ class Command(BaseCommand):
         profile.migrated_to_console = bool(result.get("MigratedToConsole", False))
         profile.daily_focus = int(result.get("DailyFocus", 0) or 0)
 
-        profile.mastery_rank = int(stats.get("Rank", 0) or 0)
+        # Mastery rank only ever increases in Warframe. Guard against the API
+        # occasionally returning Rank=0 on an otherwise-valid read, which would
+        # otherwise pollute the snapshot progression chart.
+        parsed_rank = int(stats.get("Rank", 0) or 0)
+        profile.mastery_rank = max(parsed_rank, profile.mastery_rank)
+
         profile.missions_completed = int(stats.get("MissionsCompleted", 0) or 0)
         profile.missions_quit = int(stats.get("MissionsQuit", 0) or 0)
         profile.missions_failed = int(stats.get("MissionsFailed", 0) or 0)
