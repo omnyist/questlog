@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from .models import Edition, Franchise, Genre, Work
+from .models import Edition
+from .models import Franchise
+from .models import Genre
+from .models import Work
 
 
 @admin.register(Genre)

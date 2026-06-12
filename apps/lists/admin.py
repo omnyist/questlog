@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from django.contrib import admin
 
-from .models import Entry, List, ListActivity
+from .models import Entry
+from .models import List
+from .models import ListActivity
 
 
 class EntryInline(admin.TabularInline):

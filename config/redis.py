@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import redis.asyncio as aioredis
 import redis as sync_redis
+import redis.asyncio as aioredis
 from django.conf import settings
 from django.utils import timezone
 

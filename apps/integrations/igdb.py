@@ -1,7 +1,4 @@
-from __future__ import annotations
-
-"""
-IGDB API Client
+"""IGDB API Client.
 
 Authenticates via Twitch OAuth (client credentials flow).
 Requires IGDB_CLIENT_ID and IGDB_CLIENT_SECRET in settings.
@@ -10,12 +7,9 @@ Features:
 - OAuth token caching in Redis
 - Rate limiting (4 req/sec for free tier)
 - Response caching for game data
-
-Usage:
-    client = IGDBClient()
-    results = await client.search("Xenoblade Chronicles 3")
-    game = await client.get_by_id(12345)
 """
+
+from __future__ import annotations
 
 import asyncio
 import hashlib
