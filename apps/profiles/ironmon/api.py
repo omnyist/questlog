@@ -5,6 +5,7 @@ from datetime import datetime
 from django.db.models import Count
 from ninja import Router
 from ninja import Schema
+from ninja import Status
 
 from config.auth import ApiKeyAuth
 
@@ -101,7 +102,7 @@ def get_stats(request, challenge: str | None = None):
 
     if not ch:
         if challenge:
-            return 404, {"detail": f"Challenge '{challenge}' not found"}
+            return Status(404, {"detail": f"Challenge '{challenge}' not found"})
         return StatsSchema(
             challenge="",
             total_runs=0,
@@ -161,7 +162,7 @@ def checkpoint_stats(request, challenge: str | None = None):
 
     if not ch:
         if challenge:
-            return 404, {"detail": f"Challenge '{challenge}' not found"}
+            return Status(404, {"detail": f"Challenge '{challenge}' not found"})
         return []
 
     total_runs = Run.objects.filter(challenge=ch).count()
@@ -191,7 +192,7 @@ def get_challenge(request, slug: str):
     try:
         ch = Challenge.objects.get(slug=slug)
     except Challenge.DoesNotExist:
-        return 404, {"detail": "Challenge not found"}
+        return Status(404, {"detail": "Challenge not found"})
     return ChallengeDetailSchema(
         id=ch.id,
         slug=ch.slug,
@@ -228,7 +229,7 @@ def create_run(request, payload: CreateRunSchema):
     try:
         ch = Challenge.objects.get(slug=payload.challenge_slug)
     except Challenge.DoesNotExist:
-        return 404, {"detail": f"Challenge '{payload.challenge_slug}' not found"}
+        return Status(404, {"detail": f"Challenge '{payload.challenge_slug}' not found"})
     run, created = Run.objects.get_or_create(
         seed_number=payload.seed_number,
         defaults={"challenge": ch},
@@ -263,15 +264,15 @@ def record_checkpoint(request, seed_number: int, payload: RecordCheckpointSchema
             seed_number=seed_number,
         )
     except Run.DoesNotExist:
-        return 404, {"detail": f"Run {seed_number} not found"}
+        return Status(404, {"detail": f"Run {seed_number} not found"})
     try:
         checkpoint = Checkpoint.objects.get(
             challenge=run.challenge,
             name=payload.checkpoint_name,
         )
     except Checkpoint.DoesNotExist:
-        return 404, {"detail": f"Checkpoint '{payload.checkpoint_name}' not found"}
-    result, created = CheckpointResult.objects.get_or_create(
+        return Status(404, {"detail": f"Checkpoint '{payload.checkpoint_name}' not found"})
+    _, created = CheckpointResult.objects.get_or_create(
         run=run,
         checkpoint=checkpoint,
     )

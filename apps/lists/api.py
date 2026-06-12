@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from ninja import Router, Schema
+from ninja import Router
+from ninja import Schema
+from ninja import Status
 
 from apps.library.models import Work
 from config.auth import ApiKeyAuth
 
-from .models import Entry, List, ListActivity
+from .models import Entry
+from .models import List
 
 router = Router(tags=["lists"])
 
@@ -106,9 +109,9 @@ def get_list(request, slug: str):
     try:
         lst = List.objects.prefetch_related("entries__work").get(slug=slug)
     except List.DoesNotExist:
-        return 404, {"error": "List not found"}
+        return Status(404, {"error": "List not found"})
 
-    return 200, ListDetailSchema(
+    return Status(200, ListDetailSchema(
         id=str(lst.id),
         slug=lst.slug,
         name=lst.name,
@@ -125,7 +128,7 @@ def get_list(request, slug: str):
             )
             for e in lst.entries.all()
         ],
-    )
+    ))
 
 
 # Entry endpoints
@@ -135,12 +138,12 @@ def add_entry(request, slug: str, data: EntryCreateSchema):
     try:
         lst = List.objects.get(slug=slug)
     except List.DoesNotExist:
-        return 404, {"error": "List not found"}
+        return Status(404, {"error": "List not found"})
 
     try:
         work = Work.objects.get(slug=data.work_slug)
     except Work.DoesNotExist:
-        return 404, {"error": "Work not found"}
+        return Status(404, {"error": "Work not found"})
 
     entry = Entry.objects.create(
         list=lst,
@@ -148,14 +151,14 @@ def add_entry(request, slug: str, data: EntryCreateSchema):
         position=data.position,
         notes=data.notes,
     )
-    return 200, EntrySchema(
+    return Status(200, EntrySchema(
         id=str(entry.id),
         work_id=str(entry.work_id),
         work_name=entry.work.name,
         work_slug=entry.work.slug,
         position=entry.position,
         notes=entry.notes,
-    )
+    ))
 
 
 @router.post("/lists/{slug}/entries/bulk", response=BulkEntryResultSchema, auth=ApiKeyAuth())
@@ -169,7 +172,7 @@ def bulk_add_entries(request, slug: str, data: BulkEntryCreateSchema):
         try:
             work = Work.objects.get(slug=entry_data.work_slug)
 
-            entry, created = Entry.objects.get_or_create(
+            _, created = Entry.objects.get_or_create(
                 list=lst,
                 work=work,
                 defaults={
@@ -207,10 +210,10 @@ def get_list_activity(request, slug: str, limit: int = 50):
     try:
         lst = List.objects.get(slug=slug)
     except List.DoesNotExist:
-        return 404, {"error": "List not found"}
+        return Status(404, {"error": "List not found"})
 
     activities = lst.activity.all()[:limit]
-    return 200, [
+    return Status(200, [
         ListActivitySchema(
             id=str(a.id),
             timestamp=a.timestamp,
@@ -219,4 +222,4 @@ def get_list_activity(request, slug: str, limit: int = 50):
             metadata=a.metadata,
         )
         for a in activities
-    ]
+    ])

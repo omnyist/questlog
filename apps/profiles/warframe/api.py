@@ -7,6 +7,7 @@ from django.db.models import Count
 from django.db.models import Sum
 from ninja import Router
 from ninja import Schema
+from ninja import Status
 
 from .models import Affiliation
 from .models import MissionStat
@@ -142,14 +143,14 @@ def get_profile(request):
     """Warframe profile overview with cumulative totals."""
     profile = Profile.objects.first()
     if not profile:
-        return 404, {"error": "No Warframe profile archived"}
+        return Status(404, {"error": "No Warframe profile archived"})
 
     weapon_aggregate = profile.weapons.aggregate(
         count=Count("id"),
         total_kills=Sum("kills"),
     )
 
-    return 200, ProfileSchema(
+    return Status(200, ProfileSchema(
         id=str(profile.id),
         display_name=profile.display_name,
         account_id=profile.account_id,
@@ -170,7 +171,7 @@ def get_profile(request):
         last_synced=profile.last_synced,
         weapons_tracked=weapon_aggregate["count"] or 0,
         total_weapon_kills=weapon_aggregate["total_kills"] or 0,
-    )
+    ))
 
 
 @router.get("/warframe/weapons", response=WeaponListSchema)
@@ -252,7 +253,7 @@ def get_stats(request):
     """Aggregate derived stats across the archive."""
     profile = Profile.objects.first()
     if not profile:
-        return 404, {"error": "No Warframe profile archived"}
+        return Status(404, {"error": "No Warframe profile archived"})
 
     weapon_agg = profile.weapons.aggregate(
         count=Count("id"),
@@ -269,7 +270,7 @@ def get_stats(request):
     total_hits = weapon_agg["total_hits"] or 0
     total_headshots = weapon_agg["total_headshots"] or 0
 
-    return 200, StatsSchema(
+    return Status(200, StatsSchema(
         mastery_rank=profile.mastery_rank,
         time_played_seconds=profile.time_played_seconds,
         time_played_hours=round(profile.time_played_seconds / 3600, 1),
@@ -286,4 +287,4 @@ def get_stats(request):
         nodes_played=profile.missions.count(),
         syndicates_joined=profile.affiliations.count(),
         snapshots_captured=profile.snapshots.count(),
-    )
+    ))

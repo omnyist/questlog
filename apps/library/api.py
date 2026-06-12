@@ -3,11 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 
 from django.db import IntegrityError
-from ninja import Router, Schema
+from ninja import Router
+from ninja import Schema
+from ninja import Status
 
 from config.auth import ApiKeyAuth
 
-from .models import Edition, Franchise, Genre, Work
+from .models import Edition
+from .models import Franchise
+from .models import Genre
+from .models import Work
 
 router = Router(tags=["library"])
 
@@ -159,9 +164,9 @@ def get_work(request, slug: str):
     try:
         w = Work.objects.select_related("franchise").prefetch_related("editions").get(slug=slug)
     except Work.DoesNotExist:
-        return 404, {"error": "Work not found"}
+        return Status(404, {"error": "Work not found"})
 
-    return 200, WorkDetailSchema(
+    return Status(200, WorkDetailSchema(
         id=str(w.id),
         name=w.name,
         slug=w.slug,
@@ -184,7 +189,7 @@ def get_work(request, slug: str):
             )
             for e in w.editions.all()
         ],
-    )
+    ))
 
 
 @router.put("/works/{slug}/genres", response={200: dict, 404: dict}, auth=ApiKeyAuth())
@@ -193,7 +198,7 @@ def update_work_genres(request, slug: str, data: WorkGenresUpdateSchema):
     try:
         work = Work.objects.get(slug=slug)
     except Work.DoesNotExist:
-        return 404, {"error": "Work not found"}
+        return Status(404, {"error": "Work not found"})
 
     # Set genres
     genres = Genre.objects.filter(id__in=data.genre_ids)
@@ -209,11 +214,11 @@ def update_work_genres(request, slug: str, data: WorkGenresUpdateSchema):
         work.primary_genre = None
     work.save()
 
-    return 200, {
+    return Status(200, {
         "work": slug,
         "genres": [g.slug for g in work.genres.all()],
         "primary_genre": work.primary_genre.slug if work.primary_genre else None,
-    }
+    })
 
 
 # Edition endpoints
@@ -246,9 +251,9 @@ def get_edition(request, slug: str):
     try:
         e = Edition.objects.get(slug=slug)
     except Edition.DoesNotExist:
-        return 404, {"error": "Edition not found"}
+        return Status(404, {"error": "Edition not found"})
 
-    return 200, EditionSchema(
+    return Status(200, EditionSchema(
         id=str(e.id),
         work_id=str(e.work_id),
         name=e.name,
@@ -258,7 +263,7 @@ def get_edition(request, slug: str):
         cover_url=e.cover_url or None,
         release_date=e.release_date.isoformat() if e.release_date else None,
         summary=e.summary or None,
-    )
+    ))
 
 
 @router.get("/editions/by-twitch/{twitch_category_id}", response={200: WorkDetailSchema, 404: dict})
@@ -269,10 +274,10 @@ def get_work_by_twitch_category(request, twitch_category_id: str):
             twitch_category_id=twitch_category_id,
         )
     except Edition.DoesNotExist:
-        return 404, {"error": f"No edition found for Twitch category {twitch_category_id}"}
+        return Status(404, {"error": f"No edition found for Twitch category {twitch_category_id}"})
 
     w = edition.work
-    return 200, WorkDetailSchema(
+    return Status(200, WorkDetailSchema(
         id=str(w.id),
         name=w.name,
         slug=w.slug,
@@ -295,7 +300,7 @@ def get_work_by_twitch_category(request, twitch_category_id: str):
             )
             for e in w.editions.all()
         ],
-    )
+    ))
 
 
 @router.post("/editions", response=EditionSchema, auth=ApiKeyAuth())
@@ -440,7 +445,7 @@ def bulk_import(request, data: BulkImportSchema):
             if e_data.release_date:
                 release_date = datetime.strptime(e_data.release_date, "%Y-%m-%d").date()
 
-            edition, created = Edition.objects.get_or_create(
+            _, created = Edition.objects.get_or_create(
                 slug=e_data.slug,
                 defaults={
                     "work": work,

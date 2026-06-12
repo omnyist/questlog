@@ -8,6 +8,7 @@ from django.db.models import Q
 from django.db.models import Sum
 from ninja import Router
 from ninja import Schema
+from ninja import Status
 
 from .models import Activity
 from .models import AggregateStats
@@ -233,12 +234,12 @@ def get_profile(request):
     """Overview of the archived Destiny 2 profile and its characters."""
     profile = Profile.objects.prefetch_related("characters").first()
     if not profile:
-        return 404, {"error": "No Destiny 2 profile archived"}
+        return Status(404, {"error": "No Destiny 2 profile archived"})
 
     activity_count = Activity.objects.filter(profile=profile).count()
     characters = list(profile.characters.all())
 
-    return 200, ProfileSchema(
+    return Status(200, ProfileSchema(
         id=str(profile.id),
         bungie_name=profile.bungie_name,
         bungie_name_code=profile.bungie_name_code,
@@ -248,7 +249,7 @@ def get_profile(request):
         characters=[_character_schema(c) for c in characters],
         character_count=len(characters),
         activity_count=activity_count,
-    )
+    ))
 
 
 @router.get("/destiny/characters", response=list[CharacterSchema])
@@ -324,7 +325,7 @@ def get_activity(request, instance_id: str):
             .get(instance_id=instance_id)
         )
     except Activity.DoesNotExist:
-        return 404, {"error": "Activity not found"}
+        return Status(404, {"error": "Activity not found"})
 
     pgcr_entries: list[CarnageEntrySchema] | None = None
     if hasattr(activity, "carnage_report") and activity.carnage_report:
@@ -344,7 +345,7 @@ def get_activity(request, instance_id: str):
             for e in activity.carnage_report.entries.all()
         ]
 
-    return 200, ActivityDetailSchema(
+    return Status(200, ActivityDetailSchema(
         instance_id=activity.instance_id,
         activity_name=activity.activity_name,
         mode_name=activity.mode_name,
@@ -362,7 +363,7 @@ def get_activity(request, instance_id: str):
         efficiency=activity.efficiency,
         character_class=activity.character.character_class if activity.character_id else "",
         pgcr_entries=pgcr_entries,
-    )
+    ))
 
 
 @router.get("/destiny/raids/stats", response=RaidStatsSchema)
