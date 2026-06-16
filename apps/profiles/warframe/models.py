@@ -176,3 +176,33 @@ class Snapshot(models.Model):
 
     def __str__(self):
         return f"{self.profile.display_name or self.profile.account_id} @ {self.captured_at:%Y-%m-%d}"
+
+
+class CatalogItem(models.Model):
+    """A vendored Warframe item from the WFCD warframe-items dataset.
+
+    Joins to WeaponStat / future stats via `unique_name` == the `/Lotus/...`
+    asset path. Populated by the `sync_warframe_catalog` management command.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    unique_name = models.CharField(max_length=255, unique=True, db_index=True)
+    name = models.CharField(max_length=150)
+    category = models.CharField(max_length=50, db_index=True)
+    item_type = models.CharField(max_length=100, blank=True)
+    mastery_req = models.IntegerField(default=0)
+    masterable = models.BooleanField(default=False)
+    is_prime = models.BooleanField(default=False)
+    image_name = models.CharField(max_length=255, blank=True)
+    product_category = models.CharField(max_length=100, blank=True)
+
+    raw = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["category", "name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.category})"

@@ -3,6 +3,7 @@ from __future__ import annotations
 from django.contrib import admin
 
 from .models import Affiliation
+from .models import CatalogItem
 from .models import MissionStat
 from .models import Profile
 from .models import Snapshot
@@ -91,3 +92,12 @@ class SnapshotAdmin(admin.ModelAdmin):
     ]
     date_hierarchy = "captured_at"
     list_select_related = ["profile"]
+
+
+@admin.register(CatalogItem)
+class CatalogItemAdmin(admin.ModelAdmin):
+    list_display = ["name", "category", "mastery_req", "is_prime", "masterable"]
+    list_filter = ["category", "is_prime", "masterable"]
+    search_fields = ["name", "unique_name"]
+    readonly_fields = ["id", "unique_name", "created_at", "updated_at"]
+    list_per_page = 50
