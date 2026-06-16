@@ -4,6 +4,7 @@ import logging
 import os
 
 from celery import Celery
+from celery.schedules import crontab
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +24,10 @@ app.conf.beat_schedule = {
     "poll-steam-warframe": {
         "task": "apps.profiles.warframe.tasks.poll_steam_warframe",
         "schedule": 300.0,  # Every 5 minutes
+    },
+    "sync-warframe-catalog": {
+        "task": "apps.profiles.warframe.tasks.sync_catalog",
+        "schedule": crontab(day_of_week=0, hour=4, minute=0),  # Sundays 04:00 UTC
     },
 }
 

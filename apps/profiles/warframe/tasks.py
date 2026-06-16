@@ -86,3 +86,16 @@ async def _check_current_state_async() -> str:
     client = SteamClient()
     playing = await client.is_playing(settings.STEAM_ID, SteamClient.WARFRAME_APPID)
     return "playing" if playing else "not_playing"
+
+
+@shared_task(bind=True, ignore_result=True, name="apps.profiles.warframe.tasks.sync_catalog")
+def sync_catalog(self):
+    """Refresh the WFCD item catalog weekly so newly-released frames classify.
+
+    Idempotent — update_or_create on uniqueName. Logs and swallows errors so a
+    transient GitHub/network failure never crashes the beat worker.
+    """
+    try:
+        call_command("sync_warframe_catalog")
+    except Exception:  # noqa: BLE001
+        logger.exception("sync_warframe_catalog failed")
