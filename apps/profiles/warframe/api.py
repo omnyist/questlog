@@ -10,6 +10,7 @@ from ninja import Schema
 from ninja import Status
 
 from .models import Affiliation
+from .models import CatalogItem
 from .models import MissionStat
 from .models import Profile
 from .models import Snapshot
@@ -288,3 +289,102 @@ def get_stats(request):
         syndicates_joined=profile.affiliations.count(),
         snapshots_captured=profile.snapshots.count(),
     ))
+
+
+# ---- Mastery rank progression ----
+
+
+class MasteryPointSchema(Schema):
+    date: datetime
+    mastery_rank: int
+
+
+class MasterySchema(Schema):
+    current_rank: int
+    history: list[MasteryPointSchema]
+
+
+@router.get("/warframe/mastery", response={200: MasterySchema, 404: dict})
+def get_mastery(request, granularity: str = "changes"):
+    """Current mastery rank plus progression over time from snapshots.
+
+    granularity=changes (default) returns one point per rank increase plus the
+    latest snapshot; granularity=all returns every snapshot.
+    """
+    profile = Profile.objects.first()
+    if not profile:
+        return Status(404, {"error": "No Warframe profile archived"})
+
+    snapshots = list(
+        profile.snapshots.order_by("captured_at").values_list(
+            "captured_at", "mastery_rank"
+        )
+    )
+
+    points: list[MasteryPointSchema] = []
+    if granularity == "all":
+        points = [
+            MasteryPointSchema(date=ts, mastery_rank=rank) for ts, rank in snapshots
+        ]
+    else:
+        last_rank = None
+        for ts, rank in snapshots:
+            if rank != last_rank:
+                points.append(MasteryPointSchema(date=ts, mastery_rank=rank))
+                last_rank = rank
+        # Always include the most recent snapshot so the series ends at "now".
+        if snapshots:
+            ts, rank = snapshots[-1]
+            if not points or points[-1].date != ts:
+                points.append(MasteryPointSchema(date=ts, mastery_rank=rank))
+
+    return Status(200, MasterySchema(current_rank=profile.mastery_rank, history=points))
+
+
+# ---- Most-used Warframes ----
+
+
+class FrameSchema(Schema):
+    name: str
+    weapon_path: str
+    image_name: str
+    equip_time_seconds: float
+    equip_time_hours: float
+    kills: int
+    is_prime: bool
+    mastery_req: int
+
+
+@router.get("/warframe/frames", response=list[FrameSchema])
+def list_frames(request, limit: int = 20, prime_only: bool = False):
+    """Most-used Warframes by equip time.
+
+    Joins WeaponStat to the WFCD catalog (category=Warframes) so only true
+    frames are returned — sentinels, pets, archwings, and exalted weapons are
+    excluded.
+    """
+    limit = max(1, min(limit, 200))
+
+    catalog_qs = CatalogItem.objects.filter(category="Warframes")
+    if prime_only:
+        catalog_qs = catalog_qs.filter(is_prime=True)
+    catalog = {c.unique_name: c for c in catalog_qs}
+
+    weapons = (
+        WeaponStat.objects.filter(weapon_path__in=catalog.keys())
+        .order_by("-equip_time_seconds")[:limit]
+    )
+
+    return [
+        FrameSchema(
+            name=catalog[w.weapon_path].name,
+            weapon_path=w.weapon_path,
+            image_name=catalog[w.weapon_path].image_name,
+            equip_time_seconds=w.equip_time_seconds,
+            equip_time_hours=round(w.equip_time_seconds / 3600, 1),
+            kills=w.kills,
+            is_prime=catalog[w.weapon_path].is_prime,
+            mastery_req=catalog[w.weapon_path].mastery_req,
+        )
+        for w in weapons
+    ]

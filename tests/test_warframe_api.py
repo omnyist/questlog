@@ -140,3 +140,71 @@ class TestWarframeStats:
         assert data["nodes_played"] == 1
         assert data["syndicates_joined"] == 1
         assert data["overall_accuracy"] > 0
+
+
+@pytest.mark.django_db
+class TestWarframeMastery:
+    def test_mastery_empty(self, api_client):
+        response = api_client.get("/api/warframe/mastery")
+        assert response.status_code == 404
+
+    def test_mastery_current_rank(self, api_client, warframe_profile):
+        response = api_client.get("/api/warframe/mastery")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["current_rank"] == 11
+        assert data["history"] == []
+
+    def test_mastery_changes_granularity(self, api_client, warframe_profile, warframe_mastery_history):
+        response = api_client.get("/api/warframe/mastery")
+        assert response.status_code == 200
+        data = response.json()
+        # ranks were 11,11,12,12,12,13 -> change points at 11,12,13 (latest is 13, already a change)
+        ranks = [p["mastery_rank"] for p in data["history"]]
+        assert ranks == [11, 12, 13]
+
+    def test_mastery_all_granularity(self, api_client, warframe_profile, warframe_mastery_history):
+        response = api_client.get("/api/warframe/mastery?granularity=all")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["history"]) == 6
+
+
+@pytest.mark.django_db
+class TestWarframeFrames:
+    def test_frames_empty(self, api_client):
+        response = api_client.get("/api/warframe/frames")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_frames_excludes_sentinel(self, api_client, warframe_catalog, warframe_frame_weapons):
+        """The Helios sentinel has the highest equip time but must NOT appear."""
+        response = api_client.get("/api/warframe/frames")
+        assert response.status_code == 200
+        data = response.json()
+        names = [f["name"] for f in data]
+        assert names == ["Gauss Prime", "Excalibur"]
+        assert "Helios Prime" not in names
+        assert "Prime Helios Power Suit" not in names
+
+    def test_frames_metadata(self, api_client, warframe_catalog, warframe_frame_weapons):
+        response = api_client.get("/api/warframe/frames")
+        data = response.json()
+        gauss = data[0]
+        assert gauss["name"] == "Gauss Prime"
+        assert gauss["image_name"] == "gauss-prime.png"
+        assert gauss["is_prime"] is True
+        assert gauss["kills"] == 3470
+        assert gauss["equip_time_hours"] == round(192849 / 3600, 1)
+
+    def test_frames_prime_only(self, api_client, warframe_catalog, warframe_frame_weapons):
+        response = api_client.get("/api/warframe/frames?prime_only=true")
+        data = response.json()
+        names = [f["name"] for f in data]
+        assert names == ["Gauss Prime"]
+
+    def test_frames_limit(self, api_client, warframe_catalog, warframe_frame_weapons):
+        response = api_client.get("/api/warframe/frames?limit=1")
+        data = response.json()
+        assert len(data) == 1
+        assert data[0]["name"] == "Gauss Prime"

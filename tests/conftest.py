@@ -16,6 +16,7 @@ from apps.profiles.destiny.models import CarnageReportEntry as DestinyCarnageRep
 from apps.profiles.destiny.models import Character as DestinyCharacter
 from apps.profiles.destiny.models import Profile as DestinyProfile
 from apps.profiles.warframe.models import Affiliation as WarframeAffiliation
+from apps.profiles.warframe.models import CatalogItem as WarframeCatalogItem
 from apps.profiles.warframe.models import MissionStat as WarframeMissionStat
 from apps.profiles.warframe.models import Profile as WarframeProfile
 from apps.profiles.warframe.models import Snapshot as WarframeSnapshot
@@ -328,3 +329,88 @@ def warframe_snapshot(db, warframe_profile):
         total_weapon_kills=34229,
         weapons_tracked=188,
     )
+
+
+@pytest.fixture
+def warframe_mastery_history(db, warframe_profile):
+    """Snapshots spanning MR11 -> MR13 for progression testing."""
+    from django.utils import timezone
+
+    base = timezone.now() - timezone.timedelta(days=10)
+    ranks = [11, 11, 12, 12, 12, 13]
+    snaps = []
+    for i, rank in enumerate(ranks):
+        s = WarframeSnapshot.objects.create(
+            profile=warframe_profile,
+            trigger="session_end",
+            mastery_rank=rank,
+            time_played_seconds=400000 + i * 1000,
+            missions_completed=690 + i,
+        )
+        # auto_now_add ignores explicit values, so stamp captured_at after create
+        WarframeSnapshot.objects.filter(pk=s.pk).update(
+            captured_at=base + timezone.timedelta(days=i)
+        )
+        snaps.append(s)
+    return snaps
+
+
+@pytest.fixture
+def warframe_catalog(db):
+    """Two real Warframes + one sentinel that should be excluded from frames."""
+    items = [
+        WarframeCatalogItem.objects.create(
+            unique_name="/Lotus/Powersuits/Runner/GaussPrime",
+            name="Gauss Prime",
+            category="Warframes",
+            item_type="Warframe",
+            mastery_req=0,
+            masterable=True,
+            is_prime=True,
+            image_name="gauss-prime.png",
+        ),
+        WarframeCatalogItem.objects.create(
+            unique_name="/Lotus/Powersuits/Excalibur/Excalibur",
+            name="Excalibur",
+            category="Warframes",
+            item_type="Warframe",
+            mastery_req=0,
+            masterable=True,
+            is_prime=False,
+            image_name="excalibur.png",
+        ),
+        WarframeCatalogItem.objects.create(
+            unique_name="/Lotus/Types/Sentinels/SentinelPowersuits/PrimeHeliosPowerSuit",
+            name="Helios Prime",
+            category="Sentinels",
+            item_type="Sentinel",
+            mastery_req=0,
+            masterable=True,
+            is_prime=True,
+            image_name="helios-prime.png",
+        ),
+    ]
+    return items
+
+
+@pytest.fixture
+def warframe_frame_weapons(db, warframe_profile):
+    """WeaponStat rows: two frames + a sentinel with the highest equip time."""
+    paths = [
+        # (path, name, equip_time, kills) — sentinel has MOST equip time
+        ("/Lotus/Types/Sentinels/SentinelPowersuits/PrimeHeliosPowerSuit", "Prime Helios Power Suit", 486233, 73),
+        ("/Lotus/Powersuits/Runner/GaussPrime", "Gauss Prime", 192849, 3470),
+        ("/Lotus/Powersuits/Excalibur/Excalibur", "Excalibur", 80000, 1500),
+    ]
+    rows = []
+    for path, name, equip, kills in paths:
+        rows.append(
+            WarframeWeaponStat.objects.create(
+                profile=warframe_profile,
+                weapon_path=path,
+                weapon_name=name,
+                equip_time_seconds=equip,
+                kills=kills,
+            )
+        )
+    return rows
