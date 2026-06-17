@@ -171,11 +171,12 @@ class Command(BaseCommand):
         profile.migrated_to_console = bool(result.get("MigratedToConsole", False))
         profile.daily_focus = int(result.get("DailyFocus", 0) or 0)
 
-        # Mastery rank only ever increases in Warframe. Guard against the API
-        # occasionally returning Rank=0 on an otherwise-valid read, which would
-        # otherwise pollute the snapshot progression chart.
+        # Warframe's API Rank is 0-indexed; the in-game displayed Mastery Rank
+        # is Rank + 1. Also guard against transient Rank=0 reads (which compute
+        # to 0 here) and the fact that MR only ever increases.
         parsed_rank = int(stats.get("Rank", 0) or 0)
-        profile.mastery_rank = max(parsed_rank, profile.mastery_rank)
+        displayed_rank = parsed_rank + 1 if parsed_rank > 0 else 0
+        profile.mastery_rank = max(displayed_rank, profile.mastery_rank)
 
         profile.missions_completed = int(stats.get("MissionsCompleted", 0) or 0)
         profile.missions_quit = int(stats.get("MissionsQuit", 0) or 0)
