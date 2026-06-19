@@ -171,6 +171,42 @@ class TestWarframeMastery:
 
 
 @pytest.mark.django_db
+class TestWarframeProgression:
+    def test_progression_no_profile(self, api_client):
+        response = api_client.get("/api/warframe/progression")
+        assert response.status_code == 404
+
+    def test_progression_no_snapshots(self, api_client, warframe_profile):
+        response = api_client.get("/api/warframe/progression")
+        assert response.status_code == 404
+
+    def test_progression_series(self, api_client, warframe_profile, warframe_mastery_history):
+        response = api_client.get("/api/warframe/progression")
+        assert response.status_code == 200
+        data = response.json()
+        series = data["series"]
+        assert len(series) == 6
+        # oldest-first, MR 11 -> 13
+        assert series[0]["mastery_rank"] == 11
+        assert series[-1]["mastery_rank"] == 13
+        # time_played_hours climbs (400000s -> 405000s)
+        assert series[0]["time_played_hours"] < series[-1]["time_played_hours"]
+
+    def test_progression_summary(self, api_client, warframe_profile, warframe_mastery_history):
+        response = api_client.get("/api/warframe/progression")
+        data = response.json()["summary"]
+        assert data["days_tracked"] == 5
+        assert data["mr_gained"] == 2
+        assert data["sessions"] == 6
+        assert data["current_mastery_rank"] == 13
+        assert data["current_hours_played"] == 112.5  # 405000s / 3600
+        # 2 MR over 5 days -> 12/month
+        assert data["mr_per_month"] == 12.0
+        # MR13 < 30 with positive velocity -> a projection exists
+        assert data["projected_mr30_date"] is not None
+
+
+@pytest.mark.django_db
 class TestWarframeFrames:
     def test_frames_empty(self, api_client):
         response = api_client.get("/api/warframe/frames")

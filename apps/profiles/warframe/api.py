@@ -388,3 +388,101 @@ def list_frames(request, limit: int = 20, prime_only: bool = False):
         )
         for w in weapons
     ]
+
+
+# ---- Progression (time series + velocity/projection) ----
+
+
+class ProgressionPointSchema(Schema):
+    date: datetime
+    mastery_rank: int
+    time_played_hours: float
+    missions_completed: int
+    total_weapon_kills: int
+    weapons_tracked: int
+
+
+class ProgressionSummarySchema(Schema):
+    tracked_since: datetime
+    days_tracked: int
+    sessions: int
+    current_mastery_rank: int
+    mr_gained: int
+    mr_per_month: float
+    current_hours_played: float
+    hours_in_window: float
+    hours_per_week: float
+    avg_session_hours: float
+    projected_mr30_date: datetime | None
+
+
+class ProgressionSchema(Schema):
+    summary: ProgressionSummarySchema
+    series: list[ProgressionPointSchema]
+
+
+@router.get("/warframe/progression", response={200: ProgressionSchema, 404: dict})
+def get_progression(request):
+    """Full snapshot time series plus velocity/projection summary.
+
+    The series is every snapshot oldest-first (cumulative lifetime values at
+    each point). The summary derives rates over the tracked window. Velocity
+    and projections are estimates — windowed from the first archived snapshot,
+    so they exclude play before tracking began.
+    """
+    profile = Profile.objects.first()
+    if not profile:
+        return Status(404, {"error": "No Warframe profile archived"})
+
+    snaps = list(profile.snapshots.order_by("captured_at"))
+    if not snaps:
+        return Status(404, {"error": "No snapshots recorded yet"})
+
+    series = [
+        ProgressionPointSchema(
+            date=s.captured_at,
+            mastery_rank=s.mastery_rank,
+            time_played_hours=round(s.time_played_seconds / 3600, 1),
+            missions_completed=s.missions_completed,
+            total_weapon_kills=s.total_weapon_kills,
+            weapons_tracked=s.weapons_tracked,
+        )
+        for s in snaps
+    ]
+
+    first, last = snaps[0], snaps[-1]
+    window_seconds = (last.captured_at - first.captured_at).total_seconds()
+    days_tracked = int(window_seconds // 86400)
+    months = window_seconds / (30 * 86400)
+    weeks = window_seconds / (7 * 86400)
+
+    mr_gained = last.mastery_rank - first.mastery_rank
+    hours_in_window = (last.time_played_seconds - first.time_played_seconds) / 3600
+    sessions = sum(1 for s in snaps if s.trigger == "session_end")
+
+    mr_per_month = (mr_gained / months) if months > 0 else 0.0
+    hours_per_week = (hours_in_window / weeks) if weeks > 0 else 0.0
+    avg_session_hours = (hours_in_window / sessions) if sessions > 0 else 0.0
+
+    projected_mr30 = None
+    if last.mastery_rank < 30 and mr_per_month > 0:
+        from datetime import timedelta
+
+        months_to_30 = (30 - last.mastery_rank) / mr_per_month
+        projected_mr30 = last.captured_at + timedelta(days=months_to_30 * 30)
+
+    summary = ProgressionSummarySchema(
+        tracked_since=first.captured_at,
+        days_tracked=days_tracked,
+        sessions=sessions,
+        current_mastery_rank=last.mastery_rank,
+        mr_gained=mr_gained,
+        mr_per_month=round(mr_per_month, 2),
+        current_hours_played=round(last.time_played_seconds / 3600, 1),
+        hours_in_window=round(hours_in_window, 1),
+        hours_per_week=round(hours_per_week, 1),
+        avg_session_hours=round(avg_session_hours, 2),
+        projected_mr30_date=projected_mr30,
+    )
+
+    return Status(200, ProgressionSchema(summary=summary, series=series))
