@@ -53,13 +53,15 @@ class RateLimiter:
 
 
 class WarframeClient:
+    # DE migrated the public profile endpoint off content.warframe.com/dynamic
+    # to api.warframe.com/cdn (~Jade Shadows, mid-2026). Old hosts now 404.
     PLATFORM_HOSTS = {
-        "pc": "http://content.warframe.com",
-        "ps": "http://content-ps4.warframe.com",
-        "xbox": "http://content-xb1.warframe.com",
-        "switch": "http://content-swi.warframe.com",
+        "pc": "https://api.warframe.com",
+        "ps": "https://api-ps4.warframe.com",
+        "xbox": "https://api-xb1.warframe.com",
+        "switch": "https://api-swi.warframe.com",
     }
-    PROFILE_PATH = "/dynamic/getProfileViewingData.php"
+    PROFILE_PATH = "/cdn/getProfileViewingData.php"
 
     def __init__(self):
         self.rate_limiter = RateLimiter(
