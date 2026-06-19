@@ -29,6 +29,10 @@ app.conf.beat_schedule = {
         "task": "apps.profiles.warframe.tasks.sync_catalog",
         "schedule": crontab(day_of_week=0, hour=4, minute=0),  # Sundays 04:00 UTC
     },
+    "check-warframe-staleness": {
+        "task": "apps.profiles.warframe.tasks.check_warframe_staleness",
+        "schedule": crontab(hour=12, minute=0),  # Daily 12:00 UTC
+    },
 }
 
 
