@@ -341,6 +341,114 @@ def get_mastery(request, granularity: str = "changes"):
     return Status(200, MasterySchema(current_rank=profile.mastery_rank, history=points))
 
 
+# ---- Mastery completion ----
+
+# Affinity to reach a rank R = MULT * R^2. Weapons use 500, frames/companions 1000.
+MASTERY_MULT = {
+    "Warframes": 1000,
+    "Archwing": 1000,
+    "Sentinels": 1000,
+    "Pets": 1000,
+    "Primary": 500,
+    "Secondary": 500,
+    "Melee": 500,
+    "Arch-Gun": 500,
+    "Arch-Melee": 500,
+    "SentinelWeapons": 500,
+}
+DEFAULT_MULT = 500
+
+
+class CategoryCompletionSchema(Schema):
+    category: str
+    mastered: int
+    total: int
+    pct: float
+
+
+class CompletionSchema(Schema):
+    total_masterable: int
+    total_mastered: int
+    completion_pct: float
+    categories: list[CategoryCompletionSchema]
+
+
+def mastery_threshold(category: str, max_level_cap: int) -> int:
+    """Affinity needed to max an item (= reach mastery) for its category."""
+    mult = MASTERY_MULT.get(category, DEFAULT_MULT)
+    cap = max_level_cap or 30
+    return mult * cap * cap
+
+
+def compute_completion(xp_by_path: dict, items) -> dict:
+    """Compute mastered-vs-total completion from per-item affinity.
+
+    `items` is an iterable of (unique_name, category, max_level_cap). An item
+    counts as mastered if its lifetime affinity meets the max-rank threshold.
+    Approximate: modular gear (Zaws/Kitguns/Amps) and a few sources aren't
+    represented as single catalog items, so true MR completion may run higher.
+    """
+    from collections import defaultdict
+
+    cat_total: dict[str, int] = defaultdict(int)
+    cat_mastered: dict[str, int] = defaultdict(int)
+
+    for unique_name, category, cap in items:
+        cat_total[category] += 1
+        if xp_by_path.get(unique_name, 0) >= mastery_threshold(category, cap):
+            cat_mastered[category] += 1
+
+    categories = []
+    total = mastered = 0
+    for cat in sorted(cat_total):
+        t, m = cat_total[cat], cat_mastered[cat]
+        total += t
+        mastered += m
+        categories.append(
+            {"category": cat, "mastered": m, "total": t, "pct": round(m / t * 100, 1) if t else 0.0}
+        )
+
+    return {
+        "total_masterable": total,
+        "total_mastered": mastered,
+        "completion_pct": round(mastered / total * 100, 1) if total else 0.0,
+        "categories": categories,
+    }
+
+
+@router.get("/warframe/mastery/completion", response={200: CompletionSchema, 404: dict})
+def get_mastery_completion(request):
+    """Mastery completion — items mastered vs total masterable, by category.
+
+    Reads per-item affinity from the profile's XPInfo and compares against the
+    WFCD catalog. Approximate (see compute_completion docstring).
+    """
+    profile = Profile.objects.first()
+    if not profile:
+        return Status(404, {"error": "No Warframe profile archived"})
+
+    xp_list = (profile.profile_data or {}).get("LoadOutInventory", {}).get("XPInfo", []) or []
+    xp_by_path = {
+        e.get("ItemType"): int(e.get("XP", 0) or 0)
+        for e in xp_list
+        if e.get("ItemType")
+    }
+
+    items = CatalogItem.objects.filter(masterable=True).values_list(
+        "unique_name", "category", "max_level_cap"
+    )
+    result = compute_completion(xp_by_path, items)
+    return Status(
+        200,
+        CompletionSchema(
+            total_masterable=result["total_masterable"],
+            total_mastered=result["total_mastered"],
+            completion_pct=result["completion_pct"],
+            categories=[CategoryCompletionSchema(**c) for c in result["categories"]],
+        ),
+    )
+
+
 # ---- Most-used Warframes ----
 
 

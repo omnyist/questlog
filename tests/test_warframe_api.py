@@ -207,6 +207,27 @@ class TestWarframeProgression:
 
 
 @pytest.mark.django_db
+class TestWarframeCompletion:
+    def test_completion_no_profile(self, api_client):
+        response = api_client.get("/api/warframe/mastery/completion")
+        assert response.status_code == 404
+
+    def test_completion(self, api_client, warframe_completion_setup):
+        response = api_client.get("/api/warframe/mastery/completion")
+        assert response.status_code == 200
+        data = response.json()
+        # 3 masterable items, 2 mastered (Gauss maxed frame, Soma maxed weapon)
+        assert data["total_masterable"] == 3
+        assert data["total_mastered"] == 2
+        assert data["completion_pct"] == round(2 / 3 * 100, 1)
+        by_cat = {c["category"]: c for c in data["categories"]}
+        assert by_cat["Warframes"]["mastered"] == 1
+        assert by_cat["Primary"]["mastered"] == 1
+        # the non-masterable item is excluded entirely
+        assert "Sentinels" not in by_cat
+
+
+@pytest.mark.django_db
 class TestWarframeFrames:
     def test_frames_empty(self, api_client):
         response = api_client.get("/api/warframe/frames")

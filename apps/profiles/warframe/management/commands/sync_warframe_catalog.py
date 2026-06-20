@@ -15,7 +15,19 @@ from django.core.management.base import BaseCommand
 from apps.profiles.warframe.models import CatalogItem
 
 BASE_URL = "https://raw.githubusercontent.com/WFCD/warframe-items/master/data/json"
-DEFAULT_CATEGORIES = ["Warframes"]
+# All categories that grant mastery, for completion tracking.
+DEFAULT_CATEGORIES = [
+    "Warframes",
+    "Primary",
+    "Secondary",
+    "Melee",
+    "Arch-Gun",
+    "Arch-Melee",
+    "Archwing",
+    "Sentinels",
+    "SentinelWeapons",
+    "Pets",
+]
 
 
 class Command(BaseCommand):
@@ -75,6 +87,7 @@ class Command(BaseCommand):
                 "mastery_req": int(item.get("masteryReq", 0) or 0),
                 "masterable": bool(item.get("masterable", False)),
                 "is_prime": bool(item.get("isPrime", False)),
+                "max_level_cap": int(item.get("maxLevelCap", 30) or 30),
                 "image_name": item.get("imageName", "") or "",
                 "product_category": item.get("productCategory", "") or "",
                 "raw": item,

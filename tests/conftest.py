@@ -394,6 +394,45 @@ def warframe_catalog(db):
 
 
 @pytest.fixture
+def warframe_completion_setup(db, warframe_work):
+    """Profile with XPInfo + catalog: 3 masterable items, 2 mastered."""
+    profile = WarframeProfile.objects.create(
+        work=warframe_work,
+        account_id="completion-test",
+        display_name="Avalonstar",
+        platform="pc",
+        mastery_rank=25,
+        profile_data={
+            "LoadOutInventory": {
+                "XPInfo": [
+                    {"ItemType": "/Lotus/Powersuits/Runner/GaussPrime", "XP": 10_000_000},  # frame, maxed
+                    {"ItemType": "/Lotus/Weapons/Tenno/Rifle/TennoAR", "XP": 600_000},       # weapon, maxed (>=450k)
+                    {"ItemType": "/Lotus/Weapons/Tenno/Pistol/Lato", "XP": 50_000},          # weapon, NOT maxed
+                ]
+            }
+        },
+    )
+    WarframeCatalogItem.objects.create(
+        unique_name="/Lotus/Powersuits/Runner/GaussPrime",
+        name="Gauss Prime", category="Warframes", masterable=True, max_level_cap=30,
+    )
+    WarframeCatalogItem.objects.create(
+        unique_name="/Lotus/Weapons/Tenno/Rifle/TennoAR",
+        name="Soma", category="Primary", masterable=True, max_level_cap=30,
+    )
+    WarframeCatalogItem.objects.create(
+        unique_name="/Lotus/Weapons/Tenno/Pistol/Lato",
+        name="Lato", category="Secondary", masterable=True, max_level_cap=30,
+    )
+    # A non-masterable item that must be excluded from totals.
+    WarframeCatalogItem.objects.create(
+        unique_name="/Lotus/Types/Sentinels/Sentinel",
+        name="Some Skin", category="Sentinels", masterable=False, max_level_cap=30,
+    )
+    return profile
+
+
+@pytest.fixture
 def warframe_frame_weapons(db, warframe_profile):
     """WeaponStat rows: two frames + a sentinel with the highest equip time."""
     paths = [
