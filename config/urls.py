@@ -4,6 +4,8 @@ from django.contrib import admin
 from django.urls import path
 from ninja import NinjaAPI
 
+from config.health import health_check
+
 from apps.integrations.api import router as integrations_router
 from apps.library.api import router as library_router
 from apps.lists.api import router as lists_router
@@ -29,4 +31,5 @@ api.add_router("/", warframe_router)
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", api.urls),
+    path("health/", health_check),
 ]
