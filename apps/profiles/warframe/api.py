@@ -22,7 +22,7 @@ router = Router(tags=["Warframe"])
 # ---- Schemas ----
 
 
-class ProfileSchema(Schema):
+class WarframeProfileSchema(Schema):
     id: str
     display_name: str
     account_id: str
@@ -87,7 +87,7 @@ class SnapshotSchema(Schema):
     weapons_tracked: int
 
 
-class StatsSchema(Schema):
+class WarframeStatsSchema(Schema):
     mastery_rank: int
     time_played_seconds: int
     time_played_hours: float
@@ -139,7 +139,7 @@ SORT_FIELDS = {
 # ---- Endpoints ----
 
 
-@router.get("/warframe/profile", response={200: ProfileSchema, 404: dict})
+@router.get("/warframe/profile", response={200: WarframeProfileSchema, 404: dict})
 def get_profile(request):
     """Warframe profile overview with cumulative totals."""
     profile = Profile.objects.first()
@@ -151,7 +151,7 @@ def get_profile(request):
         total_kills=Sum("kills"),
     )
 
-    return Status(200, ProfileSchema(
+    return Status(200, WarframeProfileSchema(
         id=str(profile.id),
         display_name=profile.display_name,
         account_id=profile.account_id,
@@ -249,7 +249,7 @@ def list_snapshots(request, limit: int = 50):
     ]
 
 
-@router.get("/warframe/stats", response={200: StatsSchema, 404: dict})
+@router.get("/warframe/stats", response={200: WarframeStatsSchema, 404: dict})
 def get_stats(request):
     """Aggregate derived stats across the archive."""
     profile = Profile.objects.first()
@@ -271,7 +271,7 @@ def get_stats(request):
     total_hits = weapon_agg["total_hits"] or 0
     total_headshots = weapon_agg["total_headshots"] or 0
 
-    return Status(200, StatsSchema(
+    return Status(200, WarframeStatsSchema(
         mastery_rank=profile.mastery_rank,
         time_played_seconds=profile.time_played_seconds,
         time_played_hours=round(profile.time_played_seconds / 3600, 1),

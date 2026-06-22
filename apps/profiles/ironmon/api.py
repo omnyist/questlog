@@ -27,7 +27,7 @@ class CheckpointStatSchema(Schema):
     survival_rate: float
 
 
-class StatsSchema(Schema):
+class IronmonStatsSchema(Schema):
     challenge: str
     total_runs: int
     victories: int
@@ -95,7 +95,7 @@ def _compute_checkpoint_stats(
 
 
 # Endpoints
-@router.get("/ironmon/stats", response={200: StatsSchema, 404: dict})
+@router.get("/ironmon/stats", response={200: IronmonStatsSchema, 404: dict})
 def get_stats(request, challenge: str | None = None):
     """Aggregate stats: total seeds, victories, clear rates per checkpoint."""
     ch = _resolve_challenge(challenge)
@@ -103,7 +103,7 @@ def get_stats(request, challenge: str | None = None):
     if not ch:
         if challenge:
             return Status(404, {"detail": f"Challenge '{challenge}' not found"})
-        return StatsSchema(
+        return IronmonStatsSchema(
             challenge="",
             total_runs=0,
             victories=0,
@@ -117,7 +117,7 @@ def get_stats(request, challenge: str | None = None):
     victories = runs.filter(is_victory=True).count()
     runs_with_results = runs.filter(highest_checkpoint__isnull=False).count()
 
-    return StatsSchema(
+    return IronmonStatsSchema(
         challenge=ch.name,
         total_runs=total_runs,
         victories=victories,

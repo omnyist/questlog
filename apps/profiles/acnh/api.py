@@ -145,7 +145,7 @@ class HuntRecordSchema(Schema):
     result_villager: VillagerSchema | None
 
 
-class StatsSchema(Schema):
+class AcnhStatsSchema(Schema):
     total_hunts: int
     total_islands: int
     avg_islands_per_hunt: float
@@ -156,7 +156,7 @@ class StatsSchema(Schema):
     longest_hunt: HuntRecordSchema | None
 
 
-@router.get("/acnh/stats", response=StatsSchema)
+@router.get("/acnh/stats", response=AcnhStatsSchema)
 def get_stats(request):
     """Aggregate stats across all villager hunts."""
     hunts = VillagerHunt.objects.annotate(num_encounters=Count("encounters"))
@@ -217,7 +217,7 @@ def get_stats(request):
             result_villager=_villager_schema(hunt.result_villager),
         )
 
-    return StatsSchema(
+    return AcnhStatsSchema(
         total_hunts=total_hunts,
         total_islands=total_islands,
         avg_islands_per_hunt=round(avg_islands, 1),

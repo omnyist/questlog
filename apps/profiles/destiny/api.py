@@ -35,7 +35,7 @@ class CharacterSchema(Schema):
     is_deleted: bool
 
 
-class ProfileSchema(Schema):
+class DestinyProfileSchema(Schema):
     id: str
     bungie_name: str
     bungie_name_code: int | None
@@ -229,7 +229,7 @@ def _activity_schema(activity: Activity, has_pgcr: bool) -> ActivitySchema:
 # ---- Endpoints ----
 
 
-@router.get("/destiny/profile", response={200: ProfileSchema, 404: dict})
+@router.get("/destiny/profile", response={200: DestinyProfileSchema, 404: dict})
 def get_profile(request):
     """Overview of the archived Destiny 2 profile and its characters."""
     profile = Profile.objects.prefetch_related("characters").first()
@@ -239,7 +239,7 @@ def get_profile(request):
     activity_count = Activity.objects.filter(profile=profile).count()
     characters = list(profile.characters.all())
 
-    return Status(200, ProfileSchema(
+    return Status(200, DestinyProfileSchema(
         id=str(profile.id),
         bungie_name=profile.bungie_name,
         bungie_name_code=profile.bungie_name_code,
