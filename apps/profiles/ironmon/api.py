@@ -6,6 +6,7 @@ from django.db.models import Count
 from ninja import Router
 from ninja import Schema
 from ninja import Status
+from ninja.pagination import paginate
 
 from config.auth import ApiKeyAuth
 
@@ -44,11 +45,6 @@ class RunSchema(Schema):
     is_victory: bool
     defeated_by: dict | None
     started_at: datetime
-
-
-class RunListSchema(Schema):
-    runs: list[RunSchema]
-    total: int
 
 
 # Helpers
@@ -127,32 +123,27 @@ def get_stats(request, challenge: str | None = None):
     )
 
 
-@router.get("/ironmon/runs", response=RunListSchema)
-def list_runs(request, challenge: str | None = None, limit: int = 50, offset: int = 0):
+@router.get("/ironmon/runs", response=list[RunSchema])
+@paginate
+def list_runs(request, challenge: str | None = None):
     """Recent runs with highest checkpoint reached."""
     runs = Run.objects.select_related("challenge", "highest_checkpoint")
 
     if challenge:
         runs = runs.filter(challenge__slug=challenge)
 
-    total = runs.count()
-    runs = runs[offset : offset + limit]
-
-    return RunListSchema(
-        runs=[
-            RunSchema(
-                seed_number=run.seed_number,
-                challenge=run.challenge.name,
-                highest_checkpoint=run.highest_checkpoint.name if run.highest_checkpoint else None,
-                highest_checkpoint_order=run.highest_checkpoint.order if run.highest_checkpoint else None,
-                is_victory=run.is_victory,
-                defeated_by=run.defeated_by,
-                started_at=run.started_at,
-            )
-            for run in runs
-        ],
-        total=total,
-    )
+    return [
+        RunSchema(
+            seed_number=run.seed_number,
+            challenge=run.challenge.name,
+            highest_checkpoint=run.highest_checkpoint.name if run.highest_checkpoint else None,
+            highest_checkpoint_order=run.highest_checkpoint.order if run.highest_checkpoint else None,
+            is_victory=run.is_victory,
+            defeated_by=run.defeated_by,
+            started_at=run.started_at,
+        )
+        for run in runs
+    ]
 
 
 @router.get("/ironmon/checkpoints/stats", response={200: list[CheckpointStatSchema], 404: dict})
