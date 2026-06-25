@@ -11,9 +11,44 @@ env:
   REDIS_URL: redis://synthcore-redis:6379/2
 
 jobs:
+  test:
+    runs-on: self-hosted
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: questlog
+          POSTGRES_USER: questlog
+          POSTGRES_PASSWORD: questlog
+        ports:
+          - 5439:5432
+        options: >-
+          --health-cmd "pg_isready -U questlog"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:alpine
+        ports:
+          - 6399:6379
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Run tests
+      env:
+        DATABASE_URL: postgresql://questlog:questlog@localhost:5439/questlog
+        REDIS_URL: redis://localhost:6399/0
+      run: uv run --group dev pytest -q
+
   deploy:
     runs-on: self-hosted
-
+    # TODO: add `needs: test` once the test job is confirmed green in CI,
+    # so a failing suite blocks the deploy. Ungated for the first run to
+    # avoid blocking deploys on an unverified CI job.
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
