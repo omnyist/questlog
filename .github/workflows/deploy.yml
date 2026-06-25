@@ -42,10 +42,8 @@ jobs:
       run: docker rm -f questlog-ci-pg questlog-ci-redis 2>/dev/null || true
 
   deploy:
+    needs: test
     runs-on: self-hosted
-    # TODO: add `needs: test` once the test job is confirmed green in CI,
-    # so a failing suite blocks the deploy. Ungated for the first run to
-    # avoid blocking deploys on an unverified CI job.
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
