@@ -308,8 +308,8 @@ class TestRecordDefeat:
         assert response.status_code == 200
 
         data = response.json()
-        assert len(data["runs"]) == 1
-        assert data["runs"][0]["defeated_by"]["pokemon"] == "Onix"
+        assert len(data["items"]) == 1
+        assert data["items"][0]["defeated_by"]["pokemon"] == "Onix"
 
     def test_record_defeat_rejects_no_auth(self, api_client, run):
         response = api_client.post(
