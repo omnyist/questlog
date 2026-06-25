@@ -13,24 +13,8 @@ env:
 jobs:
   test:
     runs-on: self-hosted
-    services:
-      postgres:
-        image: postgres:16
-        env:
-          POSTGRES_DB: questlog
-          POSTGRES_USER: questlog
-          POSTGRES_PASSWORD: questlog
-        ports:
-          - 5439:5432
-        options: >-
-          --health-cmd "pg_isready -U questlog"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-      redis:
-        image: redis:alpine
-        ports:
-          - 6399:6379
+    # Self-hosted runner is macOS — GH Actions `services:` are Linux-only, so
+    # spin throwaway Postgres/Redis via `docker run` (OrbStack) instead.
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -38,11 +22,24 @@ jobs:
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
 
+    - name: Start test services
+      run: |
+        docker rm -f questlog-ci-pg questlog-ci-redis 2>/dev/null || true
+        docker run -d --name questlog-ci-pg \
+          -e POSTGRES_DB=questlog -e POSTGRES_USER=questlog -e POSTGRES_PASSWORD=questlog \
+          -p 5439:5432 postgres:16
+        docker run -d --name questlog-ci-redis -p 6399:6379 redis:alpine
+        timeout 60 sh -c 'until docker exec questlog-ci-pg pg_isready -U questlog; do sleep 1; done'
+
     - name: Run tests
       env:
         DATABASE_URL: postgresql://questlog:questlog@localhost:5439/questlog
         REDIS_URL: redis://localhost:6399/0
       run: uv run --group dev pytest -q
+
+    - name: Stop test services
+      if: always()
+      run: docker rm -f questlog-ci-pg questlog-ci-redis 2>/dev/null || true
 
   deploy:
     runs-on: self-hosted
