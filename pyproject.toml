@@ -24,6 +24,9 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-django>=4.12.0",
     "ruff>=0.12.10",
+    # Bundled libpq so tests run on machines/CI without system libpq (e.g. the
+    # macOS runner). Prod uses plain psycopg with the container's libpq.
+    "psycopg[binary]>=3.2.1",
 ]
 
 [tool.ruff]
