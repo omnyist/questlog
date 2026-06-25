@@ -16,40 +16,18 @@ tails since Warframe embeds names in asset paths.
 
 from __future__ import annotations
 
-import asyncio
 import re
-import time
 from datetime import UTC
 from datetime import datetime
 
 import httpx
 from django.conf import settings
-from django.core.cache import cache
+
+from apps.integrations.base import RateLimiter
 
 
 class WarframeAPIError(Exception):
     pass
-
-
-class RateLimiter:
-    """Token bucket rate limiter using Redis."""
-
-    def __init__(self, rate: int = 2, key: str = "warframe_rate_limit"):
-        self.rate = rate
-        self.key = key
-
-    async def acquire(self) -> None:
-        while True:
-            now = time.time()
-            window_start = int(now)
-            cache_key = f"{self.key}:{window_start}"
-            count = cache.get(cache_key, 0)
-            if count < self.rate:
-                cache.set(cache_key, count + 1, timeout=2)
-                return
-            sleep_time = 1.0 - (now - window_start)
-            if sleep_time > 0:
-                await asyncio.sleep(sleep_time)
 
 
 class WarframeClient:

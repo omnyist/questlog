@@ -11,41 +11,13 @@ Features:
 
 from __future__ import annotations
 
-import asyncio
 import hashlib
-import time
 
 import httpx
 from django.conf import settings
 from django.core.cache import cache
 
-
-class RateLimiter:
-    """Simple token bucket rate limiter using Redis."""
-
-    def __init__(self, rate: int = 4, key: str = "igdb_rate_limit"):
-        self.rate = rate  # requests per second
-        self.key = key
-
-    async def acquire(self) -> None:
-        """Wait until a request slot is available."""
-        while True:
-            now = time.time()
-            window_start = int(now)
-            cache_key = f"{self.key}:{window_start}"
-
-            # Get current count for this second
-            count = cache.get(cache_key, 0)
-
-            if count < self.rate:
-                # Increment and allow
-                cache.set(cache_key, count + 1, timeout=2)
-                return
-
-            # Wait until next second
-            sleep_time = 1.0 - (now - window_start)
-            if sleep_time > 0:
-                await asyncio.sleep(sleep_time)
+from apps.integrations.base import RateLimiter
 
 
 class IGDBClient:
@@ -57,7 +29,10 @@ class IGDBClient:
     def __init__(self):
         self.client_id = settings.IGDB_CLIENT_ID
         self.client_secret = settings.IGDB_CLIENT_SECRET
-        self.rate_limiter = RateLimiter(rate=getattr(settings, "IGDB_RATE_LIMIT", 4))
+        self.rate_limiter = RateLimiter(
+            rate=getattr(settings, "IGDB_RATE_LIMIT", 4),
+            key="igdb_rate_limit",
+        )
 
     async def _get_access_token(self) -> str:
         """Get OAuth access token from Twitch, cached in Redis."""
