@@ -228,6 +228,44 @@ class TestWarframeCompletion:
 
 
 @pytest.mark.django_db
+class TestWarframeRemaining:
+    def test_remaining_no_profile(self, api_client):
+        response = api_client.get("/api/warframe/mastery/remaining")
+        assert response.status_code == 404
+
+    def test_remaining_defaults_exclude_vaulted(self, api_client, warframe_remaining_setup):
+        response = api_client.get("/api/warframe/mastery/remaining")
+        assert response.status_code == 200
+        data = response.json()
+        names = [i["name"] for i in data["items"]]
+        # Maxed Rifle is mastered → gone; Vaulted Prime excluded by default
+        assert "Maxed Rifle" not in names
+        assert "Vaulted Prime" not in names
+        assert set(names) == {"Cool Frame", "Base Rifle", "Gated Gun"}
+        # totals: 4 remaining overall, 3 obtainable (non-vaulted)
+        assert data["total_remaining"] == 4
+        assert data["total_obtainable"] == 3
+        assert data["current_mastery_rank"] == 27
+        # ranked by payoff: frame (6000) first
+        assert data["items"][0]["name"] == "Cool Frame"
+
+    def test_remaining_include_vaulted(self, api_client, warframe_remaining_setup):
+        response = api_client.get("/api/warframe/mastery/remaining?include_vaulted=true")
+        names = [i["name"] for i in response.json()["items"]]
+        assert "Vaulted Prime" in names
+
+    def test_remaining_equippable_only(self, api_client, warframe_remaining_setup):
+        response = api_client.get("/api/warframe/mastery/remaining?equippable_only=true")
+        names = [i["name"] for i in response.json()["items"]]
+        assert "Gated Gun" not in names  # req 30 > MR27
+
+    def test_remaining_category_filter(self, api_client, warframe_remaining_setup):
+        response = api_client.get("/api/warframe/mastery/remaining?category=Primary")
+        names = [i["name"] for i in response.json()["items"]]
+        assert names == ["Base Rifle"]
+
+
+@pytest.mark.django_db
 class TestWarframeFrames:
     def test_frames_empty(self, api_client):
         response = api_client.get("/api/warframe/frames")

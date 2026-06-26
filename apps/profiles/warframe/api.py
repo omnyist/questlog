@@ -449,6 +449,131 @@ def get_mastery_completion(request):
     )
 
 
+# ---- Mastery remaining (the grind checklist) ----
+
+# Mastery points granted per rank: weapons 100, frames/companions 200.
+MASTERY_PER_RANK = {
+    "Warframes": 200,
+    "Archwing": 200,
+    "Sentinels": 200,
+    "Pets": 200,
+}
+DEFAULT_PER_RANK = 100
+
+
+class RemainingItemSchema(Schema):
+    name: str
+    category: str
+    mastery_req: int
+    mastery_value: int
+    is_prime: bool
+    vaulted: bool
+    equippable: bool
+    acquisition: str
+
+
+class RemainingSchema(Schema):
+    current_mastery_rank: int
+    total_remaining: int
+    total_obtainable: int
+    obtainable_mastery_points: int
+    items: list[RemainingItemSchema]
+
+
+def mastery_value(category: str, max_level_cap: int) -> int:
+    """MR points an item grants when maxed (per-rank * cap)."""
+    return MASTERY_PER_RANK.get(category, DEFAULT_PER_RANK) * (max_level_cap or 30)
+
+
+def compute_remaining(xp_by_path: dict, items, current_mr: int) -> list[dict]:
+    """Unmastered masterable items, ranked by mastery payoff (desc).
+
+    `items` is an iterable of
+    (unique_name, name, category, mastery_req, max_level_cap, is_prime,
+     vaulted, acquisition). An item is "remaining" if its affinity is below
+     the max-rank threshold.
+    """
+    remaining = []
+    for unique_name, name, category, mastery_req, cap, is_prime, vaulted, acquisition in items:
+        if xp_by_path.get(unique_name, 0) >= mastery_threshold(category, cap):
+            continue
+        remaining.append(
+            {
+                "name": name,
+                "category": category,
+                "mastery_req": mastery_req,
+                "mastery_value": mastery_value(category, cap),
+                "is_prime": is_prime,
+                "vaulted": vaulted,
+                "equippable": mastery_req <= current_mr,
+                "acquisition": acquisition,
+            }
+        )
+    remaining.sort(key=lambda r: r["mastery_value"], reverse=True)
+    return remaining
+
+
+@router.get("/warframe/mastery/remaining", response={200: RemainingSchema, 404: dict})
+def get_mastery_remaining(
+    request,
+    category: str | None = None,
+    include_vaulted: bool = False,
+    include_primes: bool = True,
+    equippable_only: bool = False,
+    limit: int = 500,
+):
+    """What's left to master, ranked by MR payoff — the grind checklist.
+
+    Defaults to obtainable items (excludes vaulted, which can't be farmed now).
+    """
+    profile = Profile.objects.first()
+    if not profile:
+        return Status(404, {"error": "No Warframe profile archived"})
+
+    xp_list = (profile.profile_data or {}).get("LoadOutInventory", {}).get("XPInfo", []) or []
+    xp_by_path = {
+        e.get("ItemType"): int(e.get("XP", 0) or 0)
+        for e in xp_list
+        if e.get("ItemType")
+    }
+
+    qs = CatalogItem.objects.filter(masterable=True)
+    if category:
+        qs = qs.filter(category=category)
+    items = qs.values_list(
+        "unique_name", "name", "category", "mastery_req",
+        "max_level_cap", "is_prime", "vaulted", "acquisition",
+    )
+
+    remaining = compute_remaining(xp_by_path, items, profile.mastery_rank)
+    total_remaining = len(remaining)
+    obtainable = [r for r in remaining if not r["vaulted"]]
+    total_obtainable = len(obtainable)
+    obtainable_points = sum(r["mastery_value"] for r in obtainable)
+
+    shown = remaining
+    if not include_vaulted:
+        shown = [r for r in shown if not r["vaulted"]]
+    if not include_primes:
+        shown = [r for r in shown if not r["is_prime"]]
+    if equippable_only:
+        shown = [r for r in shown if r["equippable"]]
+
+    limit = max(1, min(limit, 1000))
+    shown = shown[:limit]
+
+    return Status(
+        200,
+        RemainingSchema(
+            current_mastery_rank=profile.mastery_rank,
+            total_remaining=total_remaining,
+            total_obtainable=total_obtainable,
+            obtainable_mastery_points=obtainable_points,
+            items=[RemainingItemSchema(**r) for r in shown],
+        ),
+    )
+
+
 # ---- Most-used Warframes ----
 
 

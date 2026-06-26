@@ -30,6 +30,19 @@ DEFAULT_CATEGORIES = [
 ]
 
 
+def _acquisition_hint(item: dict) -> str:
+    """Coarse 'how to get it' hint from catalog fields.
+
+    Not a drop guide (WFCD has no full drop tables here) — just enough to
+    judge: buyable from market vs. built in the foundry.
+    """
+    if item.get("marketCost"):
+        return "market"
+    if item.get("components"):
+        return "foundry"
+    return ""
+
+
 class Command(BaseCommand):
     help = "Sync the WFCD warframe-items catalog into CatalogItem"
 
@@ -87,7 +100,9 @@ class Command(BaseCommand):
                 "mastery_req": int(item.get("masteryReq", 0) or 0),
                 "masterable": bool(item.get("masterable", False)),
                 "is_prime": bool(item.get("isPrime", False)),
+                "vaulted": bool(item.get("vaulted", False)),
                 "max_level_cap": int(item.get("maxLevelCap", 30) or 30),
+                "acquisition": _acquisition_hint(item),
                 "image_name": item.get("imageName", "") or "",
                 "product_category": item.get("productCategory", "") or "",
                 "raw": item,

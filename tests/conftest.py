@@ -433,6 +433,40 @@ def warframe_completion_setup(db, warframe_work):
 
 
 @pytest.fixture
+def warframe_remaining_setup(db, warframe_work):
+    """Profile (MR27) + catalog covering mastered/unmastered/vaulted/gated cases."""
+    profile = WarframeProfile.objects.create(
+        work=warframe_work,
+        account_id="remaining-test",
+        display_name="Avalonstar",
+        platform="pc",
+        mastery_rank=27,
+        profile_data={
+            "LoadOutInventory": {
+                "XPInfo": [
+                    {"ItemType": "/w/maxed", "XP": 999_999},  # mastered → excluded
+                ]
+            }
+        },
+    )
+    rows = [
+        # (unique_name, name, category, req, prime, vaulted, acquisition)
+        ("/w/maxed", "Maxed Rifle", "Primary", 0, False, False, "market"),
+        ("/w/base", "Base Rifle", "Primary", 5, False, False, "market"),
+        ("/f/frame", "Cool Frame", "Warframes", 8, False, False, "foundry"),
+        ("/w/vault", "Vaulted Prime", "Melee", 0, True, True, "foundry"),
+        ("/w/gated", "Gated Gun", "Secondary", 30, False, False, ""),
+    ]
+    for uname, name, cat, req, prime, vaulted, acq in rows:
+        WarframeCatalogItem.objects.create(
+            unique_name=uname, name=name, category=cat, mastery_req=req,
+            masterable=True, max_level_cap=30, is_prime=prime, vaulted=vaulted,
+            acquisition=acq,
+        )
+    return profile
+
+
+@pytest.fixture
 def warframe_frame_weapons(db, warframe_profile):
     """WeaponStat rows: two frames + a sentinel with the highest equip time."""
     paths = [

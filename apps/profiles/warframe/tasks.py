@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 
 import redis
@@ -30,6 +31,10 @@ logger = logging.getLogger(__name__)
 STATE_KEY = "questlog:steam:warframe_state"
 STATE_TTL = 3600  # 1 hour — auto-resets if polling stops
 STALENESS_THRESHOLD_HOURS = 48
+LAST_ARCHIVE_KEY = "questlog:steam:warframe_last_archive"
+# Archive at most this often during an active session — conservative vs DE's
+# unofficial endpoint (the home IP also logs into the game). ~2 calls/hour.
+PERIODIC_INTERVAL = 1800  # 30 minutes
 
 
 @shared_task(bind=True, ignore_result=True, name="apps.profiles.warframe.tasks.poll_steam_warframe")
@@ -56,6 +61,10 @@ def poll_steam_warframe(self):
 
     if previous_state == current_state:
         redis_client.set(STATE_KEY, current_state, ex=STATE_TTL)
+        # Still in a session — refresh the grind data periodically so it stays
+        # current while the user is actively mastering things.
+        if current_state == "playing":
+            _maybe_periodic_archive(redis_client)
         return
 
     redis_client.set(STATE_KEY, current_state, ex=STATE_TTL)
@@ -74,15 +83,33 @@ def poll_steam_warframe(self):
             "warframe:session_end",
             {"steam_id": settings.STEAM_ID},
         )
-        try:
-            call_command("archive_warframe", trigger="session_end")
-        except Exception as exc:  # noqa: BLE001
-            logger.exception("archive_warframe failed")
-            sentry_sdk.capture_exception(exc)
-            publish_warframe_event(
-                "warframe:archive_failed",
-                {"error": str(exc)},
-            )
+        _run_archive(redis_client, "session_end", raise_on_error=True)
+
+
+def _maybe_periodic_archive(redis_client) -> None:
+    """Archive mid-session if PERIODIC_INTERVAL has elapsed since the last one."""
+    last_raw = redis_client.get(LAST_ARCHIVE_KEY)
+    last_ts = int(last_raw) if last_raw else 0
+    if time.time() - last_ts < PERIODIC_INTERVAL:
+        return
+    logger.info("Periodic mid-session archive")
+    _run_archive(redis_client, "scheduled", raise_on_error=False)
+
+
+def _run_archive(redis_client, trigger: str, *, raise_on_error: bool) -> None:
+    """Run archive_warframe, stamp the last-archive time, surface failures.
+
+    Periodic runs swallow errors (the next poll retries); session-end re-raises
+    so the failure is loud (Sentry + a failed Celery task).
+    """
+    try:
+        call_command("archive_warframe", trigger=trigger)
+        redis_client.set(LAST_ARCHIVE_KEY, int(time.time()))
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("archive_warframe failed (trigger=%s)", trigger)
+        sentry_sdk.capture_exception(exc)
+        publish_warframe_event("warframe:archive_failed", {"error": str(exc)})
+        if raise_on_error:
             raise
 
 

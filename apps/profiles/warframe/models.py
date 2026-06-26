@@ -193,7 +193,9 @@ class CatalogItem(models.Model):
     mastery_req = models.IntegerField(default=0)
     masterable = models.BooleanField(default=False)
     is_prime = models.BooleanField(default=False)
+    vaulted = models.BooleanField(default=False)
     max_level_cap = models.IntegerField(default=30)
+    acquisition = models.CharField(max_length=20, blank=True)
     image_name = models.CharField(max_length=255, blank=True)
     product_category = models.CharField(max_length=100, blank=True)
 

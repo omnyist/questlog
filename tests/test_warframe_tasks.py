@@ -5,7 +5,9 @@ from datetime import datetime
 from datetime import timedelta
 
 from apps.profiles.warframe.api import compute_completion
+from apps.profiles.warframe.api import compute_remaining
 from apps.profiles.warframe.api import mastery_threshold
+from apps.profiles.warframe.api import mastery_value
 from apps.profiles.warframe.tasks import staleness_alert_needed
 
 NOW = datetime(2026, 6, 19, 12, 0, tzinfo=UTC)
@@ -60,6 +62,51 @@ class TestComputeCompletion:
         items = [("/w/kuva", "Melee", 40)]  # 800k threshold
         assert compute_completion({"/w/kuva": 799_999}, items)["total_mastered"] == 0
         assert compute_completion({"/w/kuva": 800_000}, items)["total_mastered"] == 1
+
+
+class TestMasteryValue:
+    def test_weapon(self):
+        assert mastery_value("Primary", 30) == 3000  # 100 * 30
+        assert mastery_value("Melee", 40) == 4000  # 100 * 40
+
+    def test_frame_companion(self):
+        assert mastery_value("Warframes", 30) == 6000  # 200 * 30
+        assert mastery_value("Sentinels", 30) == 6000
+
+
+class TestComputeRemaining:
+    # (unique_name, name, category, mastery_req, cap, is_prime, vaulted, acquisition)
+    ITEMS = [
+        ("/w/maxed", "Maxed Rifle", "Primary", 0, 30, False, False, "market"),
+        ("/w/base", "Base Rifle", "Primary", 5, 30, False, False, "market"),
+        ("/f/frame", "Cool Frame", "Warframes", 8, 30, False, False, "foundry"),
+        ("/w/vault", "Vaulted Prime", "Melee", 0, 30, True, True, "foundry"),
+        ("/w/gated", "Gated Gun", "Secondary", 30, 30, False, False, ""),
+    ]
+
+    def test_excludes_mastered_ranks_by_value(self):
+        xp = {"/w/maxed": 999_999}  # only the maxed rifle is mastered
+        out = compute_remaining(xp, self.ITEMS, current_mr=27)
+        names = [r["name"] for r in out]
+        assert "Maxed Rifle" not in names
+        assert len(out) == 4
+        # sorted by mastery_value desc -> frame (6000) first
+        assert out[0]["name"] == "Cool Frame"
+        assert out[0]["mastery_value"] == 6000
+
+    def test_equippable_flag(self):
+        out = {r["name"]: r for r in compute_remaining({}, self.ITEMS, current_mr=27)}
+        assert out["Base Rifle"]["equippable"] is True       # req 5 <= 27
+        assert out["Gated Gun"]["equippable"] is False        # req 30 > 27
+        assert out["Vaulted Prime"]["vaulted"] is True
+
+    def test_carries_judge_fields(self):
+        out = {r["name"]: r for r in compute_remaining({}, self.ITEMS, current_mr=27)}
+        frame = out["Cool Frame"]
+        assert frame["category"] == "Warframes"
+        assert frame["mastery_req"] == 8
+        assert frame["acquisition"] == "foundry"
+        assert frame["is_prime"] is False
 
 
 class TestStalenessAlertNeeded:

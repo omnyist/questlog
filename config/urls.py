@@ -4,8 +4,6 @@ from django.contrib import admin
 from django.urls import path
 from ninja import NinjaAPI
 
-from config.health import health_check
-
 from apps.integrations.api import router as integrations_router
 from apps.library.api import router as library_router
 from apps.lists.api import router as lists_router
@@ -13,6 +11,7 @@ from apps.profiles.acnh.api import router as acnh_router
 from apps.profiles.destiny.api import router as destiny_router
 from apps.profiles.ironmon.api import router as ironmon_router
 from apps.profiles.warframe.api import router as warframe_router
+from config.health import health_check
 
 api = NinjaAPI(
     title="Questlog API",
