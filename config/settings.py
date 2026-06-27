@@ -4,6 +4,8 @@ from pathlib import Path
 
 import environ
 import sentry_sdk
+from sentry_sdk.scrubber import DEFAULT_DENYLIST
+from sentry_sdk.scrubber import EventScrubber
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -27,6 +29,14 @@ if not DEBUG:
         send_default_pii=True,
         traces_sample_rate=0.1,
         profiles_sample_rate=0.1,
+        # Scrub secrets out of captured locals/request data. The default
+        # denylist misses bare "key" (e.g. the Steam API key in request
+        # params), and recursive descends into nested dicts like httpx params.
+        event_scrubber=EventScrubber(
+            denylist=[*DEFAULT_DENYLIST, "key"],
+            recursive=True,
+            send_default_pii=True,
+        ),
         before_send=lambda event, hint: event
         if event.get("logger") != "django.security.DisallowedHost"
         else None,

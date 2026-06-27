@@ -16,6 +16,7 @@ import logging
 import time
 from datetime import datetime
 
+import httpx
 import redis
 import sentry_sdk
 from celery import shared_task
@@ -51,7 +52,15 @@ def poll_steam_warframe(self):
         logger.info("STEAM_API_KEY or STEAM_ID not set, skipping Warframe poll")
         return
 
-    current_state = _check_current_state()
+    try:
+        current_state = _check_current_state()
+    except httpx.TransportError as exc:
+        # Transient network blip reaching Steam — skip this tick. The state key
+        # is left untouched, so a real session transition is still caught on a
+        # later poll. The daily staleness check is the backstop.
+        logger.warning("Steam poll skipped — transient network error: %s", exc)
+        return
+
     redis_client = redis.from_url(settings.REDIS_URL)
 
     previous_raw = redis_client.get(STATE_KEY)

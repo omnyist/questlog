@@ -3,11 +3,17 @@ from __future__ import annotations
 from datetime import UTC
 from datetime import datetime
 from datetime import timedelta
+from unittest.mock import MagicMock
 
+import httpx
+import pytest
+
+from apps.profiles.warframe import tasks
 from apps.profiles.warframe.api import compute_completion
 from apps.profiles.warframe.api import compute_remaining
 from apps.profiles.warframe.api import mastery_threshold
 from apps.profiles.warframe.api import mastery_value
+from apps.profiles.warframe.tasks import poll_steam_warframe
 from apps.profiles.warframe.tasks import staleness_alert_needed
 
 NOW = datetime(2026, 6, 19, 12, 0, tzinfo=UTC)
@@ -132,3 +138,34 @@ class TestStalenessAlertNeeded:
         assert staleness_alert_needed(at_threshold, NOW, played_recently=True) is False
         just_over = NOW - timedelta(hours=48, minutes=1)
         assert staleness_alert_needed(just_over, NOW, played_recently=True) is True
+
+
+class TestPollSteamWarframe:
+    @pytest.fixture(autouse=True)
+    def _steam_configured(self, settings):
+        settings.STEAM_API_KEY = "test-key"
+        settings.STEAM_ID = "76561198009545200"
+
+    def test_transient_steam_error_skips_tick(self, monkeypatch):
+        # A network blip reaching Steam must not raise (no Sentry noise) and
+        # must not touch Redis state — the transition is caught on a later poll.
+        def boom():
+            raise httpx.ConnectTimeout("connect timed out")
+
+        redis_factory = MagicMock()
+        monkeypatch.setattr(tasks, "_check_current_state", boom)
+        monkeypatch.setattr(tasks.redis, "from_url", redis_factory)
+
+        assert poll_steam_warframe() is None
+        redis_factory.assert_not_called()
+
+    def test_unexpected_error_propagates(self, monkeypatch):
+        # Non-network failures are real bugs and should still surface.
+        def boom():
+            raise ValueError("not a network problem")
+
+        monkeypatch.setattr(tasks, "_check_current_state", boom)
+        monkeypatch.setattr(tasks.redis, "from_url", MagicMock())
+
+        with pytest.raises(ValueError, match="not a network problem"):
+            poll_steam_warframe()
