@@ -52,6 +52,22 @@ SYNDICATES = {
 }
 
 
+def _pet_acquisition(unique_name: str) -> str:
+    """Companion acquisition from the /Lotus/ asset path — WFCD tags none of
+    them. Sub-typing mirrors FrameHub's (Infested before plain, since
+    "InfestedCatbrow" contains "Catbrow" and "PredatorKubrow" contains "Kubrow").
+    """
+    if "MoaPet" in unique_name:
+        return "Legs (Fortuna)"
+    if "ZanukaPet" in unique_name:
+        return "Sister of Parvos"  # Hound parts drop from Sisters of Parvos
+    if "InfestedCatbrow" in unique_name or "PredatorKubrow" in unique_name:
+        return "Deimos (Son)"
+    if "Catbrow" in unique_name or "Kubrow" in unique_name:
+        return "Incubator"
+    return "Companion"
+
+
 def _acquisition(item: dict) -> str:
     """How an item is obtained, classified from name prefix + WFCD tags.
 
@@ -91,8 +107,15 @@ def _acquisition(item: dict) -> str:
         return "Invasion"
     if tags & {"Vandal", "Wraith"}:
         return "Event"
-    if "Prime" in tags:
+    # isPrime catches primes WFCD shipped without a "Prime" tag (e.g. Odonata
+    # Prime). Must precede market/foundry — primes are built from relic parts.
+    if "Prime" in tags or item.get("isPrime"):
         return "Void Relic"
+
+    # Companions get no tags; classify by asset path before the build/buy
+    # fallback (MOAs and Hounds have recipes and would read as Foundry).
+    if item.get("category") == "Pets":
+        return _pet_acquisition(item.get("uniqueName", "") or "")
 
     # Generic fallbacks.
     if name.startswith("Mk1-"):

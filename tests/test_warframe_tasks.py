@@ -14,6 +14,9 @@ from apps.profiles.warframe.api import compute_remaining
 from apps.profiles.warframe.api import mastery_threshold
 from apps.profiles.warframe.api import mastery_value
 from apps.profiles.warframe.api import summarize_by_acquisition
+from apps.profiles.warframe.management.commands.sync_warframe_catalog import (
+    _acquisition,
+)
 from apps.profiles.warframe.tasks import poll_steam_warframe
 from apps.profiles.warframe.tasks import staleness_alert_needed
 
@@ -120,6 +123,58 @@ class TestComputeRemaining:
         assert gun["acquisition"] == "Kuva Lich"
         assert gun["tags"] == ["Kuva Lich"]
         assert out["Vaulted Prime"]["vault_date"] == "2020-01-01"
+
+
+class TestAcquisitionClassifier:
+    def test_kuva_by_name(self):
+        assert _acquisition({"name": "Kuva Bramma", "tags": ["Grineer", "Kuva Lich"]}) == "Kuva Lich"
+
+    def test_coda_compound_name_over_infested_tag(self):
+        # WFCD tags this only "Infested"; the name is authoritative.
+        assert _acquisition({"name": "Dual Coda Torxica", "tags": ["Infested"]}) == "Technocyte Coda"
+
+    def test_tenet_defaults_to_sister(self):
+        assert _acquisition({"name": "Tenet Tetra", "tags": ["Tenet"]}) == "Sister of Parvos"
+
+    def test_tenet_holokey_special_case(self):
+        assert _acquisition({"name": "Tenet Livia", "tags": ["Tenet"]}) == "Corrupted Holokey"
+
+    def test_syndicate_specific_beats_generic(self):
+        assert (
+            _acquisition({"name": "Synoid Gammacor", "tags": ["Syndicate", "Cephalon Suda"]})
+            == "Cephalon Suda"
+        )
+
+    def test_untagged_prime_falls_to_void_relic(self):
+        # Odonata Prime ships with empty tags but isPrime; must not read Foundry.
+        item = {"name": "Odonata Prime", "tags": [], "components": [1], "isPrime": True}
+        assert _acquisition(item) == "Void Relic"
+
+    def test_pet_kubrow_incubator(self):
+        item = {"name": "Huras Kubrow", "category": "Pets", "tags": [],
+                "uniqueName": "/Lotus/.../FurtiveKubrowPetPowerSuit"}
+        assert _acquisition(item) == "Incubator"
+
+    def test_pet_vulpaphyla_deimos(self):
+        item = {"name": "Panzer Vulpaphyla", "category": "Pets", "tags": [],
+                "uniqueName": "/Lotus/.../ArmoredInfestedCatbrowPetPowerSuit"}
+        assert _acquisition(item) == "Deimos (Son)"
+
+    def test_pet_moa_legs_over_foundry(self):
+        # MOAs have build recipes; the pet check must win over Foundry.
+        item = {"name": "Para Moa", "category": "Pets", "tags": [], "components": [1],
+                "uniqueName": "/Lotus/.../MoaPetHeadPara"}
+        assert _acquisition(item) == "Legs (Fortuna)"
+
+    def test_pet_hound_sisters(self):
+        item = {"name": "Hec Hound", "category": "Pets", "tags": [], "components": [1],
+                "uniqueName": "/Lotus/.../ZanukaPetPartHeadC"}
+        assert _acquisition(item) == "Sister of Parvos"
+
+    def test_market_and_foundry_fallbacks(self):
+        assert _acquisition({"name": "Soma", "tags": ["Tenno"], "marketCost": 1}) == "Market"
+        assert _acquisition({"name": "Some Built Thing", "tags": [], "components": [1]}) == "Foundry"
+        assert _acquisition({"name": "Mk1-Braton", "tags": ["Tenno"]}) == "Market"
 
 
 class TestSummarizeByAcquisition:
