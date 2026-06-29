@@ -264,6 +264,33 @@ class TestWarframeRemaining:
         names = [i["name"] for i in response.json()["items"]]
         assert names == ["Base Rifle"]
 
+    def test_remaining_acquisition_filter(self, api_client, warframe_remaining_setup):
+        response = api_client.get(
+            "/api/warframe/mastery/remaining?acquisition=Kuva+Lich&equippable_only=false"
+        )
+        names = [i["name"] for i in response.json()["items"]]
+        assert names == ["Gated Gun"]
+
+    def test_remaining_item_carries_tags_and_acquisition(
+        self, api_client, warframe_remaining_setup
+    ):
+        response = api_client.get("/api/warframe/mastery/remaining")
+        item = next(i for i in response.json()["items"] if i["name"] == "Gated Gun")
+        assert item["acquisition"] == "Kuva Lich"
+        assert item["tags"] == ["Kuva Lich"]
+
+    def test_remaining_by_acquisition_summary(self, api_client, warframe_remaining_setup):
+        data = api_client.get("/api/warframe/mastery/remaining").json()
+        # Summary is over obtainable (non-vaulted) items only.
+        summary = {g["acquisition"]: g for g in data["by_acquisition"]}
+        assert "Void Relic" not in summary  # vaulted prime excluded
+        assert summary["Foundry"]["count"] == 1       # Cool Frame
+        assert summary["Foundry"]["mastery_points"] == 6000
+        assert summary["Market"]["count"] == 1        # Base Rifle (Maxed is mastered)
+        assert summary["Kuva Lich"]["count"] == 1     # Gated Gun
+        # Ordered by mastery_points desc → frame's Foundry leads.
+        assert data["by_acquisition"][0]["acquisition"] == "Foundry"
+
 
 @pytest.mark.django_db
 class TestWarframeFrames:

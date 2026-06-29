@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime
 
 from django.db.models import Avg
@@ -470,6 +471,14 @@ class RemainingItemSchema(Schema):
     vaulted: bool
     equippable: bool
     acquisition: str
+    tags: list[str]
+    vault_date: str
+
+
+class AcquisitionGroupSchema(Schema):
+    acquisition: str
+    count: int
+    mastery_points: int
 
 
 class RemainingSchema(Schema):
@@ -477,6 +486,7 @@ class RemainingSchema(Schema):
     total_remaining: int
     total_obtainable: int
     obtainable_mastery_points: int
+    by_acquisition: list[AcquisitionGroupSchema]
     items: list[RemainingItemSchema]
 
 
@@ -490,11 +500,14 @@ def compute_remaining(xp_by_path: dict, items, current_mr: int) -> list[dict]:
 
     `items` is an iterable of
     (unique_name, name, category, mastery_req, max_level_cap, is_prime,
-     vaulted, acquisition). An item is "remaining" if its affinity is below
-     the max-rank threshold.
+     vaulted, acquisition, tags, vault_date). An item is "remaining" if its
+     affinity is below the max-rank threshold.
     """
     remaining = []
-    for unique_name, name, category, mastery_req, cap, is_prime, vaulted, acquisition in items:
+    for (
+        unique_name, name, category, mastery_req, cap,
+        is_prime, vaulted, acquisition, tags, vault_date,
+    ) in items:
         if xp_by_path.get(unique_name, 0) >= mastery_threshold(category, cap):
             continue
         remaining.append(
@@ -507,16 +520,38 @@ def compute_remaining(xp_by_path: dict, items, current_mr: int) -> list[dict]:
                 "vaulted": vaulted,
                 "equippable": mastery_req <= current_mr,
                 "acquisition": acquisition,
+                "tags": tags or [],
+                "vault_date": vault_date or "",
             }
         )
     remaining.sort(key=lambda r: r["mastery_value"], reverse=True)
     return remaining
 
 
+def summarize_by_acquisition(items) -> list[dict]:
+    """Group items by acquisition method, with counts and total MR payoff.
+
+    Ordered by mastery_points desc — the breakdown of where remaining mastery
+    is gated (Kuva Lich, Sister of Parvos, Baro, ...).
+    """
+    groups: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    for item in items:
+        bucket = groups[item["acquisition"] or "Unknown"]
+        bucket[0] += 1
+        bucket[1] += item["mastery_value"]
+    summary = [
+        {"acquisition": name, "count": count, "mastery_points": points}
+        for name, (count, points) in groups.items()
+    ]
+    summary.sort(key=lambda g: g["mastery_points"], reverse=True)
+    return summary
+
+
 @router.get("/warframe/mastery/remaining", response={200: RemainingSchema, 404: dict})
 def get_mastery_remaining(
     request,
     category: str | None = None,
+    acquisition: str | None = None,
     include_vaulted: bool = False,
     include_primes: bool = True,
     equippable_only: bool = False,
@@ -540,9 +575,12 @@ def get_mastery_remaining(
     qs = CatalogItem.objects.filter(masterable=True)
     if category:
         qs = qs.filter(category=category)
+    if acquisition:
+        qs = qs.filter(acquisition=acquisition)
     items = qs.values_list(
         "unique_name", "name", "category", "mastery_req",
         "max_level_cap", "is_prime", "vaulted", "acquisition",
+        "tags", "vault_date",
     )
 
     remaining = compute_remaining(xp_by_path, items, profile.mastery_rank)
@@ -550,6 +588,7 @@ def get_mastery_remaining(
     obtainable = [r for r in remaining if not r["vaulted"]]
     total_obtainable = len(obtainable)
     obtainable_points = sum(r["mastery_value"] for r in obtainable)
+    by_acquisition = summarize_by_acquisition(obtainable)
 
     shown = remaining
     if not include_vaulted:
@@ -569,6 +608,7 @@ def get_mastery_remaining(
             total_remaining=total_remaining,
             total_obtainable=total_obtainable,
             obtainable_mastery_points=obtainable_points,
+            by_acquisition=[AcquisitionGroupSchema(**g) for g in by_acquisition],
             items=[RemainingItemSchema(**r) for r in shown],
         ),
     )

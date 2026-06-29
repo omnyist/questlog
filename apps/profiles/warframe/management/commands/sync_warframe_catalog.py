@@ -30,16 +30,77 @@ DEFAULT_CATEGORIES = [
 ]
 
 
-def _acquisition_hint(item: dict) -> str:
-    """Coarse 'how to get it' hint from catalog fields.
+# Tenet weapons share a prefix but split across two acquisition paths; WFCD's
+# "Tenet" tag doesn't distinguish them, so we special-case the Ergo Glast set
+# (everything else Tenet drops from a Sister of Parvos). List from FrameHub.
+HOLOKEY_WEAPONS = {
+    "Tenet Agendus",
+    "Tenet Exec",
+    "Tenet Livia",
+    "Tenet Grigori",
+    "Tenet Ferrox",
+}
 
-    Not a drop guide (WFCD has no full drop tables here) — just enough to
-    judge: buyable from market vs. built in the foundry.
+# The six syndicates that sell augment/signature weapons for standing.
+SYNDICATES = {
+    "Red Veil",
+    "New Loka",
+    "Perrin Sequence",
+    "Cephalon Suda",
+    "Arbiters of Hexis",
+    "Steel Meridian",
+}
+
+
+def _acquisition(item: dict) -> str:
+    """How an item is obtained, classified from name prefix + WFCD tags.
+
+    Name prefix is authoritative for the lich-style systems and a few others —
+    DE names those consistently even when WFCD's tags lag (several Coda weapons
+    are tagged only "Infested", for instance). We fall back to tags for the
+    systems prefixes don't identify (syndicates, events, invasions, relics),
+    then to market vs. foundry. Faction tags (Tenno/Grineer/...) are ignored.
     """
+    name = item.get("name", "") or ""
+    tags = set(item.get("tags", []) or [])
+    # Word membership (not just first word) so compound names like
+    # "Dual Coda Torxica" still match their system.
+    words = set(name.split())
+
+    # Name-identified systems (reliable from DE naming).
+    if "Kuva" in words:
+        return "Kuva Lich"
+    if "Coda" in words:
+        return "Technocyte Coda"
+    if "Tenet" in words:
+        return "Corrupted Holokey" if name in HOLOKEY_WEAPONS else "Sister of Parvos"
+    if words & {"Prisma", "Mara"}:
+        return "Baro Ki'Teer"
+    if "Dex" in words:
+        return "Anniversary"
+
+    # Tag-identified systems (prefixes don't reveal these).
+    syndicate = tags & SYNDICATES
+    if syndicate:
+        return sorted(syndicate)[0]
+    if "Syndicate" in tags:
+        return "Syndicate"
+    if tags & {"Baro", "Prisma"}:
+        return "Baro Ki'Teer"
+    if "Invasion Reward" in tags:
+        return "Invasion"
+    if tags & {"Vandal", "Wraith"}:
+        return "Event"
+    if "Prime" in tags:
+        return "Void Relic"
+
+    # Generic fallbacks.
+    if name.startswith("Mk1-"):
+        return "Market"
     if item.get("marketCost"):
-        return "market"
+        return "Market"
     if item.get("components"):
-        return "foundry"
+        return "Foundry"
     return ""
 
 
@@ -101,8 +162,10 @@ class Command(BaseCommand):
                 "masterable": bool(item.get("masterable", False)),
                 "is_prime": bool(item.get("isPrime", False)),
                 "vaulted": bool(item.get("vaulted", False)),
+                "vault_date": item.get("vaultDate", "") or "",
                 "max_level_cap": int(item.get("maxLevelCap", 30) or 30),
-                "acquisition": _acquisition_hint(item),
+                "acquisition": _acquisition(item),
+                "tags": item.get("tags", []) or [],
                 "image_name": item.get("imageName", "") or "",
                 "product_category": item.get("productCategory", "") or "",
                 "raw": item,

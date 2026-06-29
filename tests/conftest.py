@@ -450,18 +450,18 @@ def warframe_remaining_setup(db, warframe_work):
         },
     )
     rows = [
-        # (unique_name, name, category, req, prime, vaulted, acquisition)
-        ("/w/maxed", "Maxed Rifle", "Primary", 0, False, False, "market"),
-        ("/w/base", "Base Rifle", "Primary", 5, False, False, "market"),
-        ("/f/frame", "Cool Frame", "Warframes", 8, False, False, "foundry"),
-        ("/w/vault", "Vaulted Prime", "Melee", 0, True, True, "foundry"),
-        ("/w/gated", "Gated Gun", "Secondary", 30, False, False, ""),
+        # (unique_name, name, category, req, prime, vaulted, acquisition, tags)
+        ("/w/maxed", "Maxed Rifle", "Primary", 0, False, False, "Market", []),
+        ("/w/base", "Base Rifle", "Primary", 5, False, False, "Market", []),
+        ("/f/frame", "Cool Frame", "Warframes", 8, False, False, "Foundry", []),
+        ("/w/vault", "Vaulted Prime", "Melee", 0, True, True, "Void Relic", ["Prime"]),
+        ("/w/gated", "Gated Gun", "Secondary", 30, False, False, "Kuva Lich", ["Kuva Lich"]),
     ]
-    for uname, name, cat, req, prime, vaulted, acq in rows:
+    for uname, name, cat, req, prime, vaulted, acq, tags in rows:
         WarframeCatalogItem.objects.create(
             unique_name=uname, name=name, category=cat, mastery_req=req,
             masterable=True, max_level_cap=30, is_prime=prime, vaulted=vaulted,
-            acquisition=acq,
+            acquisition=acq, tags=tags,
         )
     return profile
 

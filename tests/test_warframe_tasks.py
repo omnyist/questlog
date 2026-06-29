@@ -13,6 +13,7 @@ from apps.profiles.warframe.api import compute_completion
 from apps.profiles.warframe.api import compute_remaining
 from apps.profiles.warframe.api import mastery_threshold
 from apps.profiles.warframe.api import mastery_value
+from apps.profiles.warframe.api import summarize_by_acquisition
 from apps.profiles.warframe.tasks import poll_steam_warframe
 from apps.profiles.warframe.tasks import staleness_alert_needed
 
@@ -81,13 +82,14 @@ class TestMasteryValue:
 
 
 class TestComputeRemaining:
-    # (unique_name, name, category, mastery_req, cap, is_prime, vaulted, acquisition)
+    # (unique_name, name, category, mastery_req, cap, is_prime, vaulted,
+    #  acquisition, tags, vault_date)
     ITEMS = [
-        ("/w/maxed", "Maxed Rifle", "Primary", 0, 30, False, False, "market"),
-        ("/w/base", "Base Rifle", "Primary", 5, 30, False, False, "market"),
-        ("/f/frame", "Cool Frame", "Warframes", 8, 30, False, False, "foundry"),
-        ("/w/vault", "Vaulted Prime", "Melee", 0, 30, True, True, "foundry"),
-        ("/w/gated", "Gated Gun", "Secondary", 30, 30, False, False, ""),
+        ("/w/maxed", "Maxed Rifle", "Primary", 0, 30, False, False, "Market", [], ""),
+        ("/w/base", "Base Rifle", "Primary", 5, 30, False, False, "Market", [], ""),
+        ("/f/frame", "Cool Frame", "Warframes", 8, 30, False, False, "Foundry", [], ""),
+        ("/w/vault", "Vaulted Prime", "Melee", 0, 30, True, True, "Void Relic", ["Prime"], "2020-01-01"),
+        ("/w/gated", "Gated Gun", "Secondary", 30, 30, False, False, "Kuva Lich", ["Kuva Lich"], ""),
     ]
 
     def test_excludes_mastered_ranks_by_value(self):
@@ -111,8 +113,31 @@ class TestComputeRemaining:
         frame = out["Cool Frame"]
         assert frame["category"] == "Warframes"
         assert frame["mastery_req"] == 8
-        assert frame["acquisition"] == "foundry"
+        assert frame["acquisition"] == "Foundry"
         assert frame["is_prime"] is False
+        # New fields carry through.
+        gun = out["Gated Gun"]
+        assert gun["acquisition"] == "Kuva Lich"
+        assert gun["tags"] == ["Kuva Lich"]
+        assert out["Vaulted Prime"]["vault_date"] == "2020-01-01"
+
+
+class TestSummarizeByAcquisition:
+    def test_groups_counts_and_points_sorted(self):
+        items = [
+            {"acquisition": "Kuva Lich", "mastery_value": 4000},
+            {"acquisition": "Kuva Lich", "mastery_value": 4000},
+            {"acquisition": "Market", "mastery_value": 3000},
+            {"acquisition": "", "mastery_value": 6000},
+        ]
+        out = summarize_by_acquisition(items)
+        # Sorted by mastery_points desc: Kuva (8000), Unknown (6000), Market (3000)
+        assert [g["acquisition"] for g in out] == ["Kuva Lich", "Unknown", "Market"]
+        assert out[0] == {"acquisition": "Kuva Lich", "count": 2, "mastery_points": 8000}
+        assert out[1]["acquisition"] == "Unknown"  # blank acquisition bucketed
+
+    def test_empty(self):
+        assert summarize_by_acquisition([]) == []
 
 
 class TestStalenessAlertNeeded:
