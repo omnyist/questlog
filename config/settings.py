@@ -21,6 +21,24 @@ ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["https://questlog.omnyist.com"])
 
+
+def _sentry_before_send(event, hint):
+    """Drop noise: DisallowedHost scans and interactive-shell tracebacks.
+
+    The prod container runs DEBUG=False, so `manage.py shell` / piped REPL
+    sessions have Sentry's excepthook active — typos there shouldn't page.
+    Those frames have filename "<stdin>"; the real server/Celery/management
+    command stacks never do.
+    """
+    if event.get("logger") == "django.security.DisallowedHost":
+        return None
+    for exc in event.get("exception", {}).get("values", []):
+        frames = (exc.get("stacktrace") or {}).get("frames") or []
+        if any(f.get("filename") == "<stdin>" for f in frames):
+            return None
+    return event
+
+
 # Sentry (production only)
 if not DEBUG:
     sentry_sdk.init(
@@ -37,9 +55,7 @@ if not DEBUG:
             recursive=True,
             send_default_pii=True,
         ),
-        before_send=lambda event, hint: event
-        if event.get("logger") != "django.security.DisallowedHost"
-        else None,
+        before_send=_sentry_before_send,
     )
 
 # Application definition
