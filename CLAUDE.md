@@ -1,6 +1,6 @@
-# CLAUDE.md
+# Questlog
 
-This file contains important information for Claude when working with this codebase.
+> Personal gaming-data backend (library, lists, game profiles, IronMON) — Django Ninja REST + Redis events. The reference project for synth Django conventions.
 
 ## Project Overview
 
@@ -153,15 +153,18 @@ Contains:
 
 This data should be migrated to Questlog and enriched with IGDB metadata.
 
-## Writing Code
+## Conventions
 
-- Match Synthform patterns where applicable (same deployment target)
-- Use Django Ninja for REST API (not DRF)
-- Use uv for package management
-- Pytest for testing
-- Ruff for linting (same config as Synthform)
-- NEVER implement mock modes - use real data and APIs
-- Tests must cover functionality being implemented
+@~/Code/global/conventions/django.md
+
+Project-specific deltas (everything else is inherited from the import above and ~/.claude/CLAUDE.md):
+
+- **Commits:** No restriction. Pushing to `main` deploys.
+- **Port:** 7176. **Redis logical DB:** `/2`.
+- **Auth:** Tier-2 `Bearer` `ApiKeyAuth` enforced on write routes (read GETs open).
+- **Test-gating reference:** questlog is the proven impl — `deploy` job `needs: test`, ephemeral `docker run` Postgres/Redis on offset ports for the macOS runner. Other backends mirror this.
+- Celery active (static beat schedule; in-memory scheduler for the Python 3.13 dbm workaround).
+- Sentry custom `EventScrubber` (adds `"key"` to the denylist).
 
 ## Docker
 
@@ -179,6 +182,8 @@ Development: `docker compose up`
 Questlog provides data. Omnyist provides editorial and tools that reference that data.
 
 ## WebSocket Support for Synthform Integration
+
+> ⚠️ PLANNED — not yet implemented. The WebSocket/realtime app described below does not exist in the code.
 
 Questlog needs WebSocket support so Synthform's overlay system can subscribe to real-time events. This enables streaming overlays to react to gaming data changes (playthrough completions, list updates, hunt encounters, etc.).
 
