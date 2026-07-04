@@ -155,7 +155,7 @@ This data should be migrated to Questlog and enriched with IGDB metadata.
 
 ## Conventions
 
-@~/Code/global/conventions/django.md
+@~/Code/standards/conventions/django.md
 
 Project-specific deltas (everything else is inherited from the import above and ~/.claude/CLAUDE.md):
 
