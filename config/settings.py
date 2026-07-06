@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import environ
@@ -119,7 +120,12 @@ DATABASES = {
         default="postgresql://questlog:questlog@localhost:5433/questlog",
     ),
 }
-DATABASES["default"]["OPTIONS"] = {"pool": True}
+# Connection pooling in production only. Under pytest the pool's background
+# worker thread holds connections across the test transaction and can wedge
+# teardown, so leave it off for tests (and for SQLite, which rejects it).
+_UNDER_TEST = "pytest" in sys.modules
+if DATABASES["default"]["ENGINE"] != "django.db.backends.sqlite3" and not _UNDER_TEST:
+    DATABASES["default"]["OPTIONS"] = {"pool": True}
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
