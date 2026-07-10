@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -23,13 +24,24 @@ ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=["https://questlog.omnyist.com"])
 
 
-def _sentry_before_send(event, hint):
-    """Drop noise: DisallowedHost scans and interactive-shell tracebacks.
+# Secrets embedded in URL query strings (e.g. the Steam API key). The
+# EventScrubber redacts dict params, but httpx bakes the full URL into
+# HTTPStatusError text, which lands in the exception value as a plain string.
+_URL_SECRET_RE = re.compile(
+    r"([?&](?:key|api_key|apikey|token|secret|password)=)[^&\s\"']+",
+    re.IGNORECASE,
+)
 
-    The prod container runs DEBUG=False, so `manage.py shell` / piped REPL
-    sessions have Sentry's excepthook active — typos there shouldn't page.
-    Those frames have filename "<stdin>"; the real server/Celery/management
-    command stacks never do.
+
+def _sentry_before_send(event, hint):
+    """Drop noise and redact URL secrets before sending.
+
+    Drops: DisallowedHost scans, and interactive-shell tracebacks — the prod
+    container runs DEBUG=False, so `manage.py shell` / piped REPL sessions have
+    Sentry's excepthook active and typos there shouldn't page. Those frames
+    have filename "<stdin>"; real server/Celery/command stacks never do.
+
+    Redacts: secrets in URL query strings from exception messages.
     """
     if event.get("logger") == "django.security.DisallowedHost":
         return None
@@ -37,6 +49,8 @@ def _sentry_before_send(event, hint):
         frames = (exc.get("stacktrace") or {}).get("frames") or []
         if any(f.get("filename") == "<stdin>" for f in frames):
             return None
+        if exc.get("value"):
+            exc["value"] = _URL_SECRET_RE.sub(r"\1[Filtered]", exc["value"])
     return event
 
 

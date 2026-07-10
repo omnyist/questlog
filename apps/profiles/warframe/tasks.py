@@ -60,6 +60,13 @@ def poll_steam_warframe(self):
         # later poll. The daily staleness check is the backstop.
         logger.warning("Steam poll skipped — transient network error: %s", exc)
         return
+    except httpx.HTTPStatusError as exc:
+        # Upstream 5xx (Steam hiccup, e.g. 502) — skip like a network blip. A
+        # 4xx is a real problem (bad API key, revoked access), so let it surface.
+        if exc.response.status_code >= 500:
+            logger.warning("Steam poll skipped — upstream %s", exc.response.status_code)
+            return
+        raise
 
     redis_client = redis.from_url(settings.REDIS_URL)
 

@@ -249,3 +249,32 @@ class TestPollSteamWarframe:
 
         with pytest.raises(ValueError, match="not a network problem"):
             poll_steam_warframe()
+
+    def test_upstream_5xx_skips_tick(self, monkeypatch):
+        # A Steam 502 is a transient upstream hiccup — skip like a network blip.
+        def boom():
+            raise _steam_http_error(502)
+
+        redis_factory = MagicMock()
+        monkeypatch.setattr(tasks, "_check_current_state", boom)
+        monkeypatch.setattr(tasks.redis, "from_url", redis_factory)
+
+        assert poll_steam_warframe() is None
+        redis_factory.assert_not_called()
+
+    def test_upstream_4xx_propagates(self, monkeypatch):
+        # A 4xx (e.g. revoked API key) is a real problem; don't swallow it.
+        def boom():
+            raise _steam_http_error(403)
+
+        monkeypatch.setattr(tasks, "_check_current_state", boom)
+        monkeypatch.setattr(tasks.redis, "from_url", MagicMock())
+
+        with pytest.raises(httpx.HTTPStatusError):
+            poll_steam_warframe()
+
+
+def _steam_http_error(status_code: int) -> httpx.HTTPStatusError:
+    request = httpx.Request("GET", "https://api.steampowered.com/x?key=SECRET&steamids=1")
+    response = httpx.Response(status_code, request=request)
+    return httpx.HTTPStatusError(f"Server error '{status_code}'", request=request, response=response)

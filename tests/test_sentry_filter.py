@@ -26,3 +26,23 @@ class TestSentryBeforeSend:
     def test_keeps_event_without_exception(self):
         event = {"message": "something logged"}
         assert _sentry_before_send(event, {}) is event
+
+    def test_redacts_url_secret_in_exception_message(self):
+        event = {
+            "exception": {
+                "values": [
+                    {
+                        "value": (
+                            "HTTPStatusError: 502 for url "
+                            "'https://api.steampowered.com/x?key=SECRET123&steamids=42'"
+                        ),
+                        "stacktrace": {"frames": [{"filename": "apps/integrations/steam.py"}]},
+                    }
+                ]
+            }
+        }
+        out = _sentry_before_send(event, {})
+        value = out["exception"]["values"][0]["value"]
+        assert "SECRET123" not in value
+        assert "key=[Filtered]" in value
+        assert "steamids=42" in value  # non-secret params preserved
