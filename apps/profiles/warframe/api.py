@@ -473,6 +473,8 @@ class RemainingItemSchema(Schema):
     acquisition: str
     tags: list[str]
     vault_date: str
+    owned: bool
+    mastery_progress: int
 
 
 class AcquisitionGroupSchema(Schema):
@@ -501,14 +503,18 @@ def compute_remaining(xp_by_path: dict, items, current_mr: int) -> list[dict]:
     `items` is an iterable of
     (unique_name, name, category, mastery_req, max_level_cap, is_prime,
      vaulted, acquisition, tags, vault_date). An item is "remaining" if its
-     affinity is below the max-rank threshold.
+     affinity is below the max-rank threshold. Each carries `owned` (any
+     affinity earned) and `mastery_progress` (percent toward max rank), so the
+     grind list can split not-owned from owned-but-still-leveling.
     """
     remaining = []
     for (
         unique_name, name, category, mastery_req, cap,
         is_prime, vaulted, acquisition, tags, vault_date,
     ) in items:
-        if xp_by_path.get(unique_name, 0) >= mastery_threshold(category, cap):
+        affinity = xp_by_path.get(unique_name, 0)
+        threshold = mastery_threshold(category, cap)
+        if affinity >= threshold:
             continue
         remaining.append(
             {
@@ -522,6 +528,8 @@ def compute_remaining(xp_by_path: dict, items, current_mr: int) -> list[dict]:
                 "acquisition": acquisition,
                 "tags": tags or [],
                 "vault_date": vault_date or "",
+                "owned": affinity > 0,
+                "mastery_progress": round(affinity / threshold * 100) if threshold else 0,
             }
         )
     remaining.sort(key=lambda r: r["mastery_value"], reverse=True)

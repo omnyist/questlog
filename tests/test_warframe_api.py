@@ -279,6 +279,15 @@ class TestWarframeRemaining:
         assert item["acquisition"] == "Kuva Lich"
         assert item["tags"] == ["Kuva Lich"]
 
+    def test_remaining_owned_and_progress(self, api_client, warframe_remaining_setup):
+        items = {i["name"]: i for i in api_client.get("/api/warframe/mastery/remaining").json()["items"]}
+        # Base Rifle has 200k of a 450k Primary threshold -> owned, ~44%.
+        assert items["Base Rifle"]["owned"] is True
+        assert items["Base Rifle"]["mastery_progress"] == 44
+        # Gated Gun has no affinity -> not owned yet.
+        assert items["Gated Gun"]["owned"] is False
+        assert items["Gated Gun"]["mastery_progress"] == 0
+
     def test_remaining_by_acquisition_summary(self, api_client, warframe_remaining_setup):
         data = api_client.get("/api/warframe/mastery/remaining").json()
         # Summary is over obtainable (non-vaulted) items only.

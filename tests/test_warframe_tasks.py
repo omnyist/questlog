@@ -124,6 +124,15 @@ class TestComputeRemaining:
         assert gun["tags"] == ["Kuva Lich"]
         assert out["Vaulted Prime"]["vault_date"] == "2020-01-01"
 
+    def test_owned_and_progress(self):
+        # Base Rifle at half its 450k Primary threshold -> owned, 50%.
+        # Cool Frame with no affinity -> not owned, 0%.
+        out = {r["name"]: r for r in compute_remaining({"/w/base": 225_000}, self.ITEMS, current_mr=27)}
+        assert out["Base Rifle"]["owned"] is True
+        assert out["Base Rifle"]["mastery_progress"] == 50
+        assert out["Cool Frame"]["owned"] is False
+        assert out["Cool Frame"]["mastery_progress"] == 0
+
 
 class TestAcquisitionClassifier:
     def test_kuva_by_name(self):

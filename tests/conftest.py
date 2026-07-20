@@ -445,6 +445,7 @@ def warframe_remaining_setup(db, warframe_work):
             "LoadOutInventory": {
                 "XPInfo": [
                     {"ItemType": "/w/maxed", "XP": 999_999},  # mastered → excluded
+                    {"ItemType": "/w/base", "XP": 200_000},   # owned, still leveling
                 ]
             }
         },
