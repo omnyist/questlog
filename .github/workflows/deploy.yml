@@ -21,6 +21,12 @@ jobs:
 
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
+      with:
+        # Pin to prod's Python (python:3.13-slim) and what uv.lock resolved
+        # against. Unpinned, the runner drifts to the newest CPython (3.14),
+        # which has no matching cbor2 wheel and falls back to a source build
+        # that fails on the runner's Rust toolchain.
+        python-version: "3.13"
 
     - name: Start test services
       run: |
