@@ -6,7 +6,8 @@ on:
 
 env:
   DEBUG: False
-  ALLOWED_HOSTS: "questlog.omnyist.com,questlog-server,saya,localhost"
+  ALLOWED_HOSTS: "questlog.synthrack.studio,questlog.omnyist.com,questlog-server,saya,localhost"
+  CSRF_TRUSTED_ORIGINS: "https://questlog.synthrack.studio,https://questlog.omnyist.com"
   DATABASE_URL: postgresql://questlog:questlog@synthcore-postgres:5432/questlog
   REDIS_URL: redis://synthcore-redis:6379/2
 
@@ -62,6 +63,7 @@ jobs:
         DEBUG=${{ env.DEBUG }}
         SECRET_KEY=${{ secrets.SECRET_KEY }}
         ALLOWED_HOSTS=${{ env.ALLOWED_HOSTS }}
+        CSRF_TRUSTED_ORIGINS=${{ env.CSRF_TRUSTED_ORIGINS }}
         DATABASE_URL=${{ env.DATABASE_URL }}
         REDIS_URL=${{ env.REDIS_URL }}
         TWITCH_CLIENT_ID=${{ vars.TWITCH_CLIENT_ID }}
