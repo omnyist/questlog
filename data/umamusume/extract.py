@@ -19,7 +19,9 @@ import base64
 import io
 import json
 import pathlib
+import re
 import sys
+import time
 
 from anthropic import Anthropic
 from PIL import Image
@@ -147,18 +149,20 @@ def encode(path: pathlib.Path) -> tuple[str, str]:
     return base64.standard_b64encode(buf.getvalue()).decode(), "image/jpeg"
 
 
-def extract(client: Anthropic, path: pathlib.Path, model: str, effort: str) -> dict:
+def build_params(path: pathlib.Path, model: str, effort: str) -> dict:
+    """Request body for one image. Shared by the sync and batch paths so both
+    send byte-identical requests — the batch run inherits the validated one."""
     data, media_type = encode(path)
-    response = client.messages.create(
-        model=model,
-        max_tokens=8000,
-        system=SYSTEM,
+    return {
+        "model": model,
+        "max_tokens": 8000,
+        "system": SYSTEM,
         # Transcription, not reasoning — low effort keeps this fast and cheap.
-        output_config={
+        "output_config": {
             "format": {"type": "json_schema", "schema": SCHEMA},
             "effort": effort,
         },
-        messages=[
+        "messages": [
             {
                 "role": "user",
                 "content": [
@@ -167,20 +171,138 @@ def extract(client: Anthropic, path: pathlib.Path, model: str, effort: str) -> d
                 ],
             }
         ],
-    )
+    }
+
+
+def to_record(image: str, text: str, input_tokens: int, output_tokens: int) -> dict:
+    return {
+        "image": image,
+        "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
+        **normalize(json.loads(text)),
+    }
+
+
+def extract(client: Anthropic, path: pathlib.Path, model: str, effort: str) -> dict:
+    response = client.messages.create(**build_params(path, model, effort))
     if response.stop_reason == "refusal":
         raise RuntimeError(f"{path.name}: refused")
     text = next((b.text for b in response.content if b.type == "text"), None)
     if not text:
         raise RuntimeError(f"{path.name}: no text block (stop_reason={response.stop_reason})")
-    return {
-        "image": path.name,
-        "usage": {
-            "input_tokens": response.usage.input_tokens,
-            "output_tokens": response.usage.output_tokens,
-        },
-        **normalize(json.loads(text)),
-    }
+    return to_record(path.name, text, response.usage.input_tokens, response.usage.output_tokens)
+
+
+# Batch requests cap at 256 MB; 390 MB of encoded images needs chunking, and
+# the margin covers JSON overhead on top of the base64 itself.
+BATCH_BYTES = 180_000_000
+
+
+def run_batch(
+    client: Anthropic,
+    images: list[pathlib.Path],
+    model: str,
+    effort: str,
+    out: pathlib.Path,
+    state_path: pathlib.Path,
+) -> int:
+    """Submit images as Batch API jobs (50% cheaper), then poll and collect.
+
+    Batch IDs are persisted, so an interrupted poll resumes instead of
+    resubmitting — a resubmit would pay for the same work twice.
+    """
+    from anthropic.types.message_create_params import MessageCreateParamsNonStreaming
+    from anthropic.types.messages.batch_create_params import Request
+
+    state: dict = json.loads(state_path.read_text()) if state_path.exists() else {}
+    batch_ids: list[str] = state.get("batch_ids", [])
+    # custom_id must match ^[a-zA-Z0-9_-]{1,64}$ — filenames have dots. Keep an
+    # explicit map rather than reversing the sanitization, which isn't injective.
+    id_map: dict[str, str] = state.get("id_map", {})
+
+    if not batch_ids:
+        used: set[str] = set()
+
+        def custom_id_for(name: str) -> str:
+            base = re.sub(r"[^a-zA-Z0-9_-]", "_", name)[:64]
+            cid, n = base, 1
+            while cid in used:
+                n += 1
+                cid = f"{base[:60]}_{n}"
+            used.add(cid)
+            id_map[cid] = name
+            return cid
+
+        def submit(chunk: list, size: int) -> None:
+            b = client.messages.batches.create(requests=chunk)
+            batch_ids.append(b.id)
+            print(f"submitted {b.id} ({len(chunk)} images, ~{size/1e6:.0f} MB)")
+
+        chunk: list = []
+        size = 0
+        for path in images:
+            params = build_params(path, model, effort)
+            approx = len(params["messages"][0]["content"][0]["source"]["data"])
+            if chunk and size + approx > BATCH_BYTES:
+                submit(chunk, size)
+                chunk, size = [], 0
+            chunk.append(
+                Request(
+                    custom_id=custom_id_for(path.name),
+                    params=MessageCreateParamsNonStreaming(**params),
+                )
+            )
+            size += approx
+        if chunk:
+            submit(chunk, size)
+        state_path.write_text(json.dumps({"batch_ids": batch_ids, "id_map": id_map}, indent=2))
+        print(f"\n{len(batch_ids)} batches submitted; state saved to {state_path}")
+    else:
+        print(f"resuming {len(batch_ids)} batches from {state_path}")
+
+    # Poll until every batch has ended.
+    while True:
+        statuses = {bid: client.messages.batches.retrieve(bid).processing_status for bid in batch_ids}
+        pending = [b for b, s in statuses.items() if s != "ended"]
+        if not pending:
+            break
+        print(f"  waiting on {len(pending)}/{len(batch_ids)} batches ({', '.join(sorted(set(statuses.values())))})")
+        time.sleep(60)
+
+    # Collect. Results arrive in arbitrary order — key on custom_id, never position.
+    counts = {"succeeded": 0, "errored": 0, "canceled": 0, "expired": 0}
+    totals = {"input": 0, "output": 0}
+    with out.open("a") as fh:
+        for bid in batch_ids:
+            for result in client.messages.batches.results(bid):
+                kind = result.result.type
+                counts[kind] = counts.get(kind, 0) + 1
+                image = id_map.get(result.custom_id, result.custom_id)
+                if kind != "succeeded":
+                    print(f"  {image}: {kind}", file=sys.stderr)
+                    continue
+                msg = result.result.message
+                text = next((b.text for b in msg.content if b.type == "text"), None)
+                if not text:
+                    counts["errored"] += 1
+                    print(f"  {image}: no text block", file=sys.stderr)
+                    continue
+                record = to_record(
+                    image, text, msg.usage.input_tokens, msg.usage.output_tokens
+                )
+                fh.write(json.dumps(record) + "\n")
+                totals["input"] += record["usage"]["input_tokens"]
+                totals["output"] += record["usage"]["output_tokens"]
+
+    print(f"\n{counts}")
+    print(f"tokens: {totals['input']:,} in / {totals['output']:,} out")
+    print(f"wrote {out}")
+
+    # Retire the state file once collected. Left in place it would make the next
+    # run resume these finished batches instead of submitting the new images.
+    if not (counts["errored"] or counts["expired"]):
+        state_path.replace(state_path.with_suffix(".done.json"))
+        print(f"batch state retired to {state_path.with_suffix('.done.json')}")
+    return 1 if counts["errored"] or counts["expired"] else 0
 
 
 def main() -> int:
@@ -191,6 +313,8 @@ def main() -> int:
     parser.add_argument("--effort", default="low", choices=["low", "medium", "high"])
     parser.add_argument("--only", help="comma-separated filenames (for validation samples)")
     parser.add_argument("--limit", type=int, help="stop after N images")
+    parser.add_argument("--batch", action="store_true", help="use the Batch API (50%% cheaper)")
+    parser.add_argument("--state", default="data/umamusume/batch_state.json")
     args = parser.parse_args()
 
     root = pathlib.Path(args.images)
@@ -222,6 +346,10 @@ def main() -> int:
         return 0
 
     client = Anthropic()
+
+    if args.batch:
+        return run_batch(client, pending, args.model, args.effort, out, pathlib.Path(args.state))
+
     totals = {"input": 0, "output": 0}
     failures = 0
 

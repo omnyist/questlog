@@ -76,5 +76,6 @@ data/*.json
 
 # Umamusume run screenshots (source images for OCR import — large, not source)
 data/umamusume/screenshots/
-# Extraction output — derived from the screenshots, regenerable
+# Extraction/merge output and batch state — derived from the screenshots
 data/umamusume/*.jsonl
+data/umamusume/*.json
