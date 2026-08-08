@@ -73,3 +73,8 @@ coverage.xml
 
 # Data import generated files
 data/*.json
+
+# Umamusume run screenshots (source images for OCR import — large, not source)
+data/umamusume/screenshots/
+# Extraction output — derived from the screenshots, regenerable
+data/umamusume/*.jsonl
