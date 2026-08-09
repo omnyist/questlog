@@ -46,6 +46,16 @@ RANK_MIN = {
     "S": 14_500, "S+": 15_900, "SS": 17_500, "UG": 19_600, "UG1": 20_100, "UG2": 20_500,
 }
 
+STATS = ("speed", "stamina", "power", "guts", "wit")
+
+# Observed across 172 fully-statted runs: 214-1433 per stat, and a rating that
+# runs 2.43-4.35x the stat sum (superlinear, hence the wide band). Deliberately
+# loose — this catches a value read off the wrong element entirely, not a small
+# misread. A one-row column shift moves the sum by ~5%, well inside the band, so
+# nothing here would catch it; disagreeing Details screens are what does.
+STAT_RANGE = (1, 1_800)
+RATING_PER_STAT = (2.0, 5.0)
+
 STEAM_NAME = re.compile(r"(\d{8})(\d{6})_1\.jpg$", re.IGNORECASE)
 EXIF_IFD_POINTER = 0x8769  # 34665 — points at the sub-IFD holding DateTimeOriginal
 EXIF_DATETIME_ORIGINAL = 36867
@@ -137,6 +147,38 @@ def rank_conflicts(rank: str | None, rating: int | None) -> str | None:
     return None
 
 
+def stat_conflicts(run: dict, disputed: list[str]) -> str | None:
+    """Sanity-check the raw stats.
+
+    Ordered by how much each finding actually proves. A disagreement between two
+    Details screens of the same career is decisive — the game does not change
+    the numbers between screenshots, so one reading is simply wrong. The rest are
+    plausibility bounds: they catch a value grabbed off the wrong element, and
+    would not catch a subtle misread.
+    """
+    if disputed:
+        return f"Details screens disagree on {', '.join(disputed)}"
+
+    present = [s for s in STATS if run.get(s) is not None]
+    if 0 < len(present) < len(STATS):
+        missing = [s for s in STATS if run.get(s) is None]
+        return f"only {len(present)}/5 stats read (missing {', '.join(missing)})"
+    if not present:
+        return None
+
+    low, high = STAT_RANGE
+    out_of_range = [f"{s}={run[s]:,}" for s in STATS if not (low <= run[s] <= high)]
+    if out_of_range:
+        return f"stat outside {low}-{high:,}: {', '.join(out_of_range)}"
+
+    if run.get("rating"):
+        ratio = run["rating"] / sum(run[s] for s in STATS)
+        if not (RATING_PER_STAT[0] <= ratio <= RATING_PER_STAT[1]):
+            return (f"rating {run['rating']:,} is {ratio:.2f}x the stat sum "
+                    f"{sum(run[s] for s in STATS):,} (expected {RATING_PER_STAT[0]}-{RATING_PER_STAT[1]}x)")
+    return None
+
+
 def build_run(group: list[dict]) -> dict | None:
     real = [r for r in group if r["screen_type"] != "other"]
     if not real:
@@ -158,18 +200,27 @@ def build_run(group: list[dict]) -> dict | None:
         "|".join(str(x) for x in (character, vote(real, "outfit_title"), rating, races, wins)).encode()
     ).hexdigest()
 
+    # Stats come only from Details screens, but a run can have more than one —
+    # voting lets them cross-check each other instead of the first silently
+    # winning. A tie means two screens of the same career disagree, which the
+    # game makes impossible, so record it rather than picking a side.
+    stats: dict[str, int | None] = {}
+    disputed: list[str] = []
+    for stat in STATS:
+        seen = [r[stat] for r in real if r["screen_type"] == "details" and r.get(stat) is not None]
+        counts = Counter(seen).most_common(2)
+        stats[stat] = counts[0][0] if counts else None
+        if len(counts) > 1 and counts[0][1] == counts[1][1]:
+            disputed.append(f"{stat} ({counts[0][0]:,} vs {counts[1][0]:,})")
+
     screens = {r["screen_type"] for r in real}
-    return {
+    run = {
         "character": character,
         "outfit_title": vote(real, "outfit_title"),
         "earned_title": vote(real, "earned_title"),
         "rank": rank,
         "rating": rating,
-        "speed": first_from(real, "details", "speed"),
-        "stamina": first_from(real, "details", "stamina"),
-        "power": first_from(real, "details", "power"),
-        "guts": first_from(real, "details", "guts"),
-        "wit": first_from(real, "details", "wit"),
+        **stats,
         "fans": vote(real, "fans"),
         "races": races,
         "wins": wins,
@@ -184,6 +235,8 @@ def build_run(group: list[dict]) -> dict | None:
         "fingerprint": fingerprint,
         "warning": rank_conflicts(rank, rating),
     }
+    run["stat_warning"] = stat_conflicts(run, disputed)
+    return run
 
 
 def main() -> int:
@@ -297,6 +350,12 @@ def main() -> int:
     print(f"\nrank/rating contradictions (needs a human eye): {len(flagged)}")
     for r in flagged:
         print(f"  {r['run_date'][:10]}  {r['character']}: {r['warning']}")
+        print(f"     {', '.join(r['source_images'])}")
+
+    stat_flagged = [r for r in runs if r["stat_warning"]]
+    print(f"\nstat integrity problems (needs a human eye): {len(stat_flagged)}")
+    for r in stat_flagged:
+        print(f"  {r['run_date'][:10]}  {r['character']}: {r['stat_warning']}")
         print(f"     {', '.join(r['source_images'])}")
 
     if undated:

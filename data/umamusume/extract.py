@@ -111,6 +111,11 @@ SCHEMA = {
     "additionalProperties": False,
 }
 
+# Shared with merge.py/bench.py so validity checks agree on what a rank is.
+KNOWN_RANKS = ("G","F","E","D","C","C+","B","B+","A","A+","S","S+","SS","UG","UG1","UG2")
+RANK_MIN = {"C+":4_000,"B":6_500,"B+":8_200,"A":10_000,"A+":12_100,"S":14_500,
+            "S+":15_900,"SS":17_500,"UG":19_600,"UG1":20_100,"UG2":20_500}
+
 NUMERIC = ("rating", "speed", "stamina", "power", "guts", "wit", "fans", "races", "wins")
 
 
@@ -118,7 +123,10 @@ def normalize(raw: dict) -> dict:
     """Blank strings to None, numeric strings to ints, aptitudes to a dict."""
     out = dict(raw)
     for key in NUMERIC:
-        value = (out.get(key) or "").replace(",", "").strip()
+        value = out.get(key)
+        if isinstance(value, int):
+            continue  # already a number: a schema that types these as integers
+        value = (value or "").replace(",", "").strip()
         out[key] = int(value) if value.lstrip("-").isdigit() else None
     for key in ("character_name", "outfit_title", "earned_title", "rank"):
         out[key] = (out.get(key) or "").strip() or None
