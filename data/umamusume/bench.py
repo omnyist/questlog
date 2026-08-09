@@ -12,22 +12,19 @@ Two scoring sets:
     disagreement means "differs from Opus", not necessarily "wrong".
 
 Run:
-    uv run --with pillow --with httpx --with anthropic python data/umamusume/bench.py \
+    uv run --with pillow --with httpx python data/umamusume/bench.py \
         --model qwen/qwen3-vl-30b
 """
 
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import pathlib
 import random
 import sys
 import time
 from collections import Counter
-
-import httpx
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import extract  # noqa: E402 — reuse the production prompt, schema, and encoder
@@ -45,65 +42,23 @@ GROUND_TRUTH: dict[str, dict] = {
     "20251026200433_1.jpg": {"screen_type": "attributes", "character_name": "Gold Ship", "outfit_title": "Red Strife", "fans": 333292},
 }
 
-LOCAL_SCHEMA: dict = {}
 STATS = ("speed", "stamina", "power", "guts", "wit")
 KNOWN_RANKS = set(extract.__dict__.get("KNOWN_RANKS", [])) or {
     "G", "F", "E", "D", "C", "C+", "B", "B+", "A", "A+", "S", "S+", "SS", "UG", "UG1", "UG2",
 }
 
 
-def local_schema() -> dict:
-    """The production schema with numeric fields typed as real integers.
+def query(model: str, image: pathlib.Path, timeout: float, url: str = extract.LOCAL_URL) -> tuple[dict, float]:
+    """One image through the same code path the real local extraction uses.
 
-    Anthropic's structured output caps schema complexity, which is why the
-    production schema flattens every field to a required string. llama.cpp has
-    no such cap, and forcing a string grammar onto a field the model wants to
-    emit as a number makes it emit `", "` instead of the digits — it reads them
-    correctly with the grammar off. Give it the type it wants.
+    Deliberately not a reimplementation — benchmarking a second copy of the
+    request would measure something the pipeline never runs. Retries are off so
+    a repetition loop is scored as the failure it is rather than being papered
+    over on a second attempt.
     """
-    schema = copy.deepcopy(extract.SCHEMA)
-    for key in extract.NUMERIC:
-        schema["properties"][key] = {"type": ["integer", "null"]}
-
-    # Without maxItems the grammar will happily accept an array forever, and a
-    # 3B-active model falls into repetition loops (`"B", "B", "B", ...`) that run
-    # to max_tokens and return truncated, unparseable JSON — 22 of the first 100
-    # images died this way. Bounds are the observed maxima across all 661 Opus
-    # extractions, with headroom; a cap is what actually stops the loop.
-    # A fresh dict per key: the three array fields share one object in the
-    # production schema, and deepcopy preserves that sharing, so mutating in
-    # place would apply the last cap to all three.
-    for key, cap in (("major_wins", 8), ("support_cards", 8), ("legacy_ranks", 10)):
-        schema["properties"][key] = {**schema["properties"][key], "maxItems": cap}
-    return schema
-
-
-def query(model: str, image: pathlib.Path, timeout: float) -> tuple[dict, float]:
-    b64, _ = extract.encode(image)
     started = time.time()
-    response = httpx.post(
-        "http://localhost:1234/v1/chat/completions",
-        timeout=timeout,
-        json={
-            "model": model,
-            "temperature": 0,
-            "max_tokens": 1200,
-            "response_format": {
-                "type": "json_schema",
-                "json_schema": {"name": "screen", "strict": True, "schema": LOCAL_SCHEMA},
-            },
-            "messages": [
-                {"role": "system", "content": extract.SYSTEM},
-                {"role": "user", "content": [
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}},
-                    {"type": "text", "text": "Extract this screenshot."},
-                ]},
-            ],
-        },
-    )
-    response.raise_for_status()
-    payload = json.loads(response.json()["choices"][0]["message"]["content"])
-    return extract.normalize(payload), time.time() - started
+    record = extract.extract_local(image, model, url, timeout, attempts=1)
+    return record, time.time() - started
 
 
 def loudness(record: dict) -> list[str]:
@@ -155,9 +110,6 @@ def main() -> int:
                     help="per-image model output, so disagreements can be adjudicated "
                          "without paying for another pass")
     args = ap.parse_args()
-
-    global LOCAL_SCHEMA
-    LOCAL_SCHEMA = local_schema()
 
     print(f"model: {args.model}\n")
 

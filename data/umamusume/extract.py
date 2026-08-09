@@ -7,24 +7,36 @@ separate classification pass.
 Writes JSONL (one record per image) and is resumable: images already present in
 the output file are skipped.
 
+Two backends. The API path is the one that built the archive; `--local` talks to
+an LM Studio server instead, which is what the ongoing feed uses — a handful of
+screenshots after a career, no reason to pay for those. Both share the prompt,
+the encoder, and the output format, so records from either are interchangeable.
+
 Run:
     uv run --with anthropic --with pillow python data/umamusume/extract.py \
         --only IMG_1352.PNG,IMG_1353.PNG --out data/umamusume/sample.jsonl
+
+    uv run --with pillow python data/umamusume/extract.py --local
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import io
 import json
 import pathlib
 import re
 import sys
 import time
+from typing import TYPE_CHECKING
 
-from anthropic import Anthropic
+import httpx
 from PIL import Image
+
+if TYPE_CHECKING:
+    from anthropic import Anthropic
 
 # The API downsamples above this anyway; doing it locally keeps request bodies
 # small without costing accuracy or extra image tokens.
@@ -118,6 +130,55 @@ RANK_MIN = {"C+":4_000,"B":6_500,"B+":8_200,"A":10_000,"A+":12_100,"S":14_500,
 
 NUMERIC = ("rating", "speed", "stamina", "power", "guts", "wit", "fans", "races", "wins")
 
+LOCAL_URL = "http://localhost:1234/v1/chat/completions"
+LOCAL_MODEL = "qwen/qwen3-vl-30b"  # benchmarked in bench.py; override with --model
+
+# Observed maxima across the 661-image archive are 3 / 6 / 7. See local_schema().
+LOCAL_ARRAY_CAPS = {"major_wins": 8, "support_cards": 8, "legacy_ranks": 10}
+
+APTITUDE_KEYS = ("turf", "dirt", "sprint", "mile", "medium", "long", "front", "pace", "late", "end")
+APTITUDE_GRADES = ["S", "A", "B", "C", "D", "E", "F", "G", ""]
+
+
+def local_schema() -> dict:
+    """SCHEMA adjusted for llama.cpp. Both changes are forced, not preferences.
+
+    Numeric fields become real integers. They are strings above only because
+    Anthropic caps schema complexity; llama.cpp has no such cap, and a string
+    grammar over a field the model wants to emit as a number makes it write the
+    literal `", "` instead of the digits — the same model reads them correctly
+    with the grammar off.
+
+    Arrays get maxItems. Unbounded, the grammar will accept an array forever and
+    a small model loops (`"B", "B", "B", ...`) until max_tokens, returning
+    truncated JSON. A cap is what actually ends the loop.
+
+    Aptitudes become a real object for the same reason. Asked for the grid as one
+    comma-separated string, a local model returns whatever grid it noticed first
+    — usually the five stat grades, which look plausible and are the wrong data
+    entirely. Naming the ten fields makes the question unambiguous, and an enum
+    of grades leaves no room to answer with something else.
+    """
+    schema = copy.deepcopy(SCHEMA)
+    for key in NUMERIC:
+        schema["properties"][key] = {"type": ["integer", "null"]}
+    # Fresh dicts: the array fields share one object above, and deepcopy
+    # preserves that sharing, so mutating in place would apply one cap to all.
+    for key, cap in LOCAL_ARRAY_CAPS.items():
+        schema["properties"][key] = {**schema["properties"][key], "maxItems": cap}
+    schema["properties"]["aptitudes"] = {
+        "type": "object",
+        "description": (
+            "The Track/Distance/Style aptitude grid. Empty string for any grade "
+            "not shown on this screen. These are NOT the Speed/Stamina/Power/"
+            "Guts/Wit stat grades."
+        ),
+        "properties": {k: {"type": "string", "enum": APTITUDE_GRADES} for k in APTITUDE_KEYS},
+        "required": list(APTITUDE_KEYS),
+        "additionalProperties": False,
+    }
+    return schema
+
 
 def normalize(raw: dict) -> dict:
     """Blank strings to None, numeric strings to ints, aptitudes to a dict."""
@@ -132,15 +193,20 @@ def normalize(raw: dict) -> dict:
         out[key] = (out.get(key) or "").strip() or None
 
     apt: dict[str, str] = {}
-    for part in (raw.get("aptitudes") or "").split(","):
-        if ":" in part:
-            name, grade = part.split(":", 1)
-            name, grade = name.strip().lower(), grade.strip()
-            if name and grade:
-                apt[name] = grade
-    # Keep the unparsed string too — without it a parse failure is
+    incoming = raw.get("aptitudes")
+    if isinstance(incoming, dict):
+        # Already structured: the local schema asks for the grid field by field.
+        apt = {k.strip().lower(): v.strip() for k, v in incoming.items() if isinstance(v, str) and v.strip()}
+    else:
+        for part in (incoming or "").split(","):
+            if ":" in part:
+                name, grade = part.split(":", 1)
+                name, grade = name.strip().lower(), grade.strip()
+                if name and grade:
+                    apt[name] = grade
+    # Keep the unparsed value too — without it a parse failure is
     # indistinguishable from the model returning nothing.
-    out["aptitudes_raw"] = raw.get("aptitudes") or ""
+    out["aptitudes_raw"] = incoming if isinstance(incoming, str) else json.dumps(incoming or {})
     out["aptitudes"] = apt
     return out
 
@@ -188,6 +254,62 @@ def to_record(image: str, text: str, input_tokens: int, output_tokens: int) -> d
         "usage": {"input_tokens": input_tokens, "output_tokens": output_tokens},
         **normalize(json.loads(text)),
     }
+
+
+def extract_local(
+    path: pathlib.Path,
+    model: str,
+    url: str,
+    timeout: float,
+    attempts: int = 3,
+) -> dict:
+    """One image against an OpenAI-compatible local server (LM Studio).
+
+    Retries raise the temperature rather than repeating the same call: the first
+    attempt is greedy, so an identical retry reproduces the identical failure.
+    The failure worth retrying is a repetition loop that truncates the JSON, and
+    a little sampling noise is what breaks it.
+    """
+    data, media_type = encode(path)
+    schema = local_schema()
+    last: Exception | None = None
+    for attempt in range(attempts):
+        response = httpx.post(
+            url,
+            timeout=timeout,
+            json={
+                "model": model,
+                "temperature": 0.0 if attempt == 0 else 0.3,
+                "max_tokens": 1200,
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {"name": "screen", "strict": True, "schema": schema},
+                },
+                "messages": [
+                    {"role": "system", "content": SYSTEM},
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{data}"}},
+                            {"type": "text", "text": "Extract this screenshot."},
+                        ],
+                    },
+                ],
+            },
+        )
+        response.raise_for_status()
+        body = response.json()
+        usage = body.get("usage") or {}
+        try:
+            return to_record(
+                path.name,
+                body["choices"][0]["message"]["content"],
+                usage.get("prompt_tokens", 0),
+                usage.get("completion_tokens", 0),
+            )
+        except json.JSONDecodeError as exc:
+            last = exc
+    raise RuntimeError(f"{path.name}: unparseable JSON after {attempts} attempts ({last})")
 
 
 def extract(client: Anthropic, path: pathlib.Path, model: str, effort: str) -> dict:
@@ -317,13 +439,22 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--images", default="data/umamusume/screenshots")
     parser.add_argument("--out", default="data/umamusume/extracted.jsonl")
-    parser.add_argument("--model", default="claude-opus-5")
+    parser.add_argument("--model", help=f"default: claude-opus-5, or {LOCAL_MODEL} with --local")
     parser.add_argument("--effort", default="low", choices=["low", "medium", "high"])
     parser.add_argument("--only", help="comma-separated filenames (for validation samples)")
     parser.add_argument("--limit", type=int, help="stop after N images")
     parser.add_argument("--batch", action="store_true", help="use the Batch API (50%% cheaper)")
     parser.add_argument("--state", default="data/umamusume/batch_state.json")
+    parser.add_argument("--local", action="store_true",
+                        help="extract against a local LM Studio server instead of the API")
+    parser.add_argument("--local-url", default=LOCAL_URL)
+    parser.add_argument("--local-timeout", type=float, default=600.0)
     args = parser.parse_args()
+
+    if args.local and args.batch:
+        print("--batch is an Anthropic Batch API feature; it has no local equivalent", file=sys.stderr)
+        return 1
+    model = args.model or (LOCAL_MODEL if args.local else "claude-opus-5")
 
     root = pathlib.Path(args.images)
     out = pathlib.Path(args.out)
@@ -353,18 +484,28 @@ def main() -> int:
     if not pending:
         return 0
 
-    client = Anthropic()
+    # Imported here, not at module scope, so a fully local run needs neither the
+    # anthropic package nor credentials.
+    client = None
+    if not args.local:
+        from anthropic import Anthropic
+
+        client = Anthropic()
 
     if args.batch:
-        return run_batch(client, pending, args.model, args.effort, out, pathlib.Path(args.state))
+        return run_batch(client, pending, model, args.effort, out, pathlib.Path(args.state))
 
+    print(f"backend: {'local ' + args.local_url if args.local else 'anthropic api'} | model: {model}")
     totals = {"input": 0, "output": 0}
     failures = 0
 
     with out.open("a") as fh:
         for i, path in enumerate(pending, 1):
             try:
-                record = extract(client, path, args.model, args.effort)
+                if args.local:
+                    record = extract_local(path, model, args.local_url, args.local_timeout)
+                else:
+                    record = extract(client, path, model, args.effort)
             except Exception as exc:  # noqa: BLE001 — log and continue the batch
                 failures += 1
                 print(f"[{i}/{len(pending)}] {path.name}: FAILED {exc}", file=sys.stderr)
