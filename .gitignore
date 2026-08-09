@@ -76,6 +76,10 @@ data/*.json
 
 # Umamusume run screenshots (source images for OCR import — large, not source)
 data/umamusume/screenshots/
-# Extraction/merge output and batch state — derived from the screenshots
+# Merge output and batch state — cheaply re-derived from extracted.jsonl
 data/umamusume/*.jsonl
 data/umamusume/*.json
+# ...except the extraction itself. Once the screenshots are deleted this can no
+# longer be regenerated (it would need the images AND another paid extraction
+# run), so it stops being derived data and becomes the archive's source.
+!data/umamusume/extracted.jsonl

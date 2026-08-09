@@ -52,13 +52,18 @@ EXIF_DATETIME_ORIGINAL = 36867
 EXIF_DATETIME = 306  # top-level fallback; iOS writes the same value to both
 
 
-def capture_time(root: pathlib.Path, image: str) -> datetime.datetime | None:
+def capture_time(root: pathlib.Path, image: str, stored: str | None = None) -> datetime.datetime | None:
     """Steam encodes capture time in the filename; iOS carries it in EXIF.
+
+    A previously resolved value wins, so the archive survives deleting the
+    source images — an iOS date exists nowhere else once its PNG is gone.
 
     Deliberately never uses mtime/birthtime — they mean opposite things on the
     two platforms (copy time for one, capture time for the other), so trusting
     either uniformly misdates half the archive.
     """
+    if stored:
+        return datetime.datetime.fromisoformat(stored)
     m = STEAM_NAME.search(image)
     if m:
         return datetime.datetime.strptime(m.group(1) + m.group(2), "%Y%m%d%H%M%S")
@@ -189,12 +194,25 @@ def main() -> int:
     args = ap.parse_args()
 
     root = pathlib.Path(args.images)
-    records = [json.loads(line) for line in pathlib.Path(args.extracted).open() if line.strip()]
+    extracted_path = pathlib.Path(args.extracted)
+    records = [json.loads(line) for line in extracted_path.open() if line.strip()]
     undated = []
+    newly_dated = 0
     for rec in records:
-        rec["_when"] = capture_time(root, rec["image"])
+        rec["_when"] = capture_time(root, rec["image"], rec.get("captured_at"))
         if rec["_when"] is None:
             undated.append(rec["image"])
+        elif not rec.get("captured_at"):
+            rec["captured_at"] = rec["_when"].isoformat()
+            newly_dated += 1
+
+    # Persist resolved dates back into the extraction so the source images stop
+    # being load-bearing and can be archived off this machine.
+    if newly_dated:
+        with extracted_path.open("w") as fh:
+            for rec in records:
+                fh.write(json.dumps({k: v for k, v in rec.items() if k != "_when"}) + "\n")
+
     records = [r for r in records if r["_when"]]
     records.sort(key=lambda r: r["_when"])
 
@@ -247,7 +265,8 @@ def main() -> int:
     no_record = [r for r in runs if r["races"] is None]
     flagged = [r for r in runs if r["warning"]]
 
-    print(f"screenshots: {len(records)} dated, {len(undated)} undated")
+    print(f"screenshots: {len(records)} dated, {len(undated)} undated"
+          + (f"  ({newly_dated} capture times persisted into the extraction)" if newly_dated else ""))
     print(f"runs: {len(runs)}  ({len(suspects)} flagged not-yours, {len(runs)-len(suspects)} importable; "
           f"complete Details+Result: {len(complete)})")
     print(f"characters: {len({r['character'] for r in runs})}   "
