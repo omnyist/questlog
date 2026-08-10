@@ -98,11 +98,17 @@ class IGDBClient:
             return result
 
     async def search(self, query: str, limit: int = 10) -> list[dict]:
-        """Search for games by name."""
+        """Search for games by name.
+
+        `category` and `parent_game` identify expansions and DLC so callers
+        can roll them up to the base game — IGDB lists Heavensward and FFXIV
+        as separate entries, and Twitch categories use both.
+        """
         body = f'''
             search "{query}";
             fields name, slug, cover.url, first_release_date, summary,
-                   genres.name, platforms.name, franchise.name, collection.name;
+                   genres.name, platforms.name, franchise.name, collection.name,
+                   category, parent_game.id, parent_game.name, parent_game.slug;
             limit {limit};
         '''
         return await self._request("games", body)
@@ -113,7 +119,8 @@ class IGDBClient:
             where id = {igdb_id};
             fields name, slug, cover.url, first_release_date, summary,
                    genres.name, platforms.name, franchise.name, collection.name,
-                   storyline, rating, aggregated_rating;
+                   storyline, rating, aggregated_rating,
+                   category, parent_game.id, parent_game.name, parent_game.slug;
         '''
         results = await self._request("games", body)
         return results[0] if results else None
