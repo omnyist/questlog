@@ -44,7 +44,8 @@ GROUND_TRUTH: dict[str, dict] = {
 
 STATS = ("speed", "stamina", "power", "guts", "wit")
 KNOWN_RANKS = set(extract.__dict__.get("KNOWN_RANKS", [])) or {
-    "G", "F", "E", "D", "C", "C+", "B", "B+", "A", "A+", "S", "S+", "SS", "UG", "UG1", "UG2",
+    "G", "F", "E", "D", "C", "C+", "B", "B+", "A", "A+", "S", "S+", "SS", "SS+",
+    "UG", "UG1", "UG2", "UG3",
 }
 
 

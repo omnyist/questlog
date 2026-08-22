@@ -40,10 +40,12 @@ RANK_SCREENS = {"details", "result", "career_rank"}
 # community documents them (B/B+/A/A+/UG); elsewhere just under the lowest value
 # observed across 372 readings. Used only to FLAG contradictions, so approximate
 # boundaries are fine — the ordering is what matters.
-RANK_ORDER = ["G", "F", "E", "D", "C", "C+", "B", "B+", "A", "A+", "S", "S+", "SS", "UG", "UG1", "UG2"]
+RANK_ORDER = ["G", "F", "E", "D", "C", "C+", "B", "B+", "A", "A+", "S", "S+",
+              "SS", "SS+", "UG", "UG1", "UG2", "UG3"]
 RANK_MIN = {
     "C+": 4_000, "B": 6_500, "B+": 8_200, "A": 10_000, "A+": 12_100,
-    "S": 14_500, "S+": 15_900, "SS": 17_500, "UG": 19_600, "UG1": 20_100, "UG2": 20_500,
+    "S": 14_500, "S+": 15_900, "SS": 17_500, "SS+": 19_200, "UG": 19_600,
+    "UG1": 20_100, "UG2": 20_500, "UG3": 21_000,
 }
 
 STATS = ("speed", "stamina", "power", "guts", "wit")

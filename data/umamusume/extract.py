@@ -124,9 +124,11 @@ SCHEMA = {
 }
 
 # Shared with merge.py/bench.py so validity checks agree on what a rank is.
-KNOWN_RANKS = ("G","F","E","D","C","C+","B","B+","A","A+","S","S+","SS","UG","UG1","UG2")
+KNOWN_RANKS = ("G","F","E","D","C","C+","B","B+","A","A+","S","S+","SS","SS+",
+               "UG","UG1","UG2","UG3")
 RANK_MIN = {"C+":4_000,"B":6_500,"B+":8_200,"A":10_000,"A+":12_100,"S":14_500,
-            "S+":15_900,"SS":17_500,"UG":19_600,"UG1":20_100,"UG2":20_500}
+            "S+":15_900,"SS":17_500,"SS+":19_200,"UG":19_600,"UG1":20_100,
+            "UG2":20_500,"UG3":21_000}
 
 NUMERIC = ("rating", "speed", "stamina", "power", "guts", "wit", "fans", "races", "wins")
 
