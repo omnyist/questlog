@@ -138,18 +138,37 @@ DATABASES = {
 # worker thread holds connections across the test transaction and can wedge
 # teardown, so leave it off for tests (and for SQLite, which rejects it).
 _UNDER_TEST = "pytest" in sys.modules
-if DATABASES["default"]["ENGINE"] != "django.db.backends.sqlite3" and not _UNDER_TEST:
-    # Not just for the request path: Django hands this straight to the pool as
-    # its `check` callback (`enable_checks` in the postgresql backend), and
-    # without it psycopg_pool defaults to check=None and validates nothing —
-    # so after a Postgres restart the pool serves dead connections forever.
-    # See the 2026-08-21 shared-Postgres restart.
-    #
-    # Do NOT also pass `check` in the pool options: Django already passes it
-    # and psycopg_pool raises "got multiple values for keyword argument
-    # 'check'" at first use, which crash-loops the container.
-    DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
-    DATABASES["default"]["OPTIONS"] = {"pool": True}
+
+
+def production_database_extras(engine: str, *, under_test: bool) -> dict:
+    """The DB config that ships to production — pure, so tests can see it.
+
+    Because the pool is off under pytest, everything in the production branch
+    is invisible to an ordinary test run: a fully green suite shipped a
+    crash-loop on 2026-08-22 (a `check` key colliding with the one Django
+    passes itself). tests/test_production_db_config.py asserts on this
+    function's output with under_test=False, which is the only way the shipped
+    branch gets looked at before prod does.
+
+    CONN_HEALTH_CHECKS does more than its name suggests: Django's postgresql
+    backend forwards it to psycopg_pool as the pool's `check` callback. Left
+    False, the pool validates nothing and serves connections killed by a
+    Postgres restart forever (the 2026-08-21 shared-Postgres restart).
+
+    Never put `check` in the pool options yourself — Django passes it, and
+    psycopg_pool rejects the duplicate on the first cursor.
+    """
+    if engine == "django.db.backends.sqlite3" or under_test:
+        return {}
+    return {
+        "CONN_HEALTH_CHECKS": True,
+        "OPTIONS": {"pool": True},
+    }
+
+
+DATABASES["default"].update(
+    production_database_extras(DATABASES["default"]["ENGINE"], under_test=_UNDER_TEST)
+)
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
