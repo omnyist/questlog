@@ -132,6 +132,40 @@ def split_on_character(cluster: list[dict]) -> list[list[dict]]:
     return groups
 
 
+def career_ratings(group: list[dict]) -> set[int]:
+    """Ratings this group reports, from the screens that actually show one."""
+    return {
+        r["rating"] for r in group
+        if r.get("rating") is not None and r["screen_type"] in RANK_SCREENS
+    }
+
+
+def rejoin_same_career(groups: list[list[dict]]) -> list[list[dict]]:
+    """Undo a split that a misread name caused rather than a new career.
+
+    split_on_character cuts on any change of name, which is right when a
+    different uma really is being viewed, and wrong when one screen simply
+    misread the name — a local vision model does that on a few percent of
+    screens. The two cases look identical by name alone, so use the rating:
+    the game shows one rating per career, so adjacent groups reporting the SAME
+    rating are one career seen twice, while a genuinely different uma carries a
+    different rating. Verified against all three flagged cases in the archive —
+    the two real imposters differ from their neighbours, the misread matched
+    exactly (Gold Ship / Oguri Cap, SS+ 19,422, one minute apart).
+
+    Two distinct careers landing on an identical five-digit rating back to back
+    would merge wrongly; that has not happened in 700 screenshots, and vote()
+    would still pick the right name for the survivor.
+    """
+    joined: list[list[dict]] = []
+    for group in groups:
+        if joined and (career_ratings(joined[-1]) & career_ratings(group)):
+            joined[-1] = joined[-1] + group
+        else:
+            joined.append(group)
+    return joined
+
+
 def rank_conflicts(rank: str | None, rating: int | None) -> str | None:
     """Rank is a function of rating, so a mismatch means one of them is wrong."""
     if not rank or rating is None or rank not in RANK_MIN:
@@ -276,12 +310,10 @@ def main() -> int:
         else:
             clusters.append([cur])
 
-    runs = []
+    groups: list[list[dict]] = []
     for cluster in clusters:
-        for group in split_on_character(cluster):
-            run = build_run(group)
-            if run:
-                runs.append(run)
+        groups.extend(split_on_character(cluster))
+    runs = [run for group in rejoin_same_career(groups) if (run := build_run(group))]
 
     # Collapse duplicates: the same run screenshotted twice hashes identically.
     by_fp: dict[str, dict] = {}
