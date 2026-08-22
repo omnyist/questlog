@@ -139,16 +139,17 @@ DATABASES = {
 # teardown, so leave it off for tests (and for SQLite, which rejects it).
 _UNDER_TEST = "pytest" in sys.modules
 if DATABASES["default"]["ENGINE"] != "django.db.backends.sqlite3" and not _UNDER_TEST:
-    from psycopg_pool import ConnectionPool
-
-    # `check` is required, not tuning. Django skips its own CONN_HEALTH_CHECKS
-    # whenever a pool is set ("the pool only returns healthy connections"), and
-    # psycopg_pool defaults to check=None and validates nothing — so after a
-    # Postgres restart the pool hands out dead connections indefinitely.
+    # Not just for the request path: Django hands this straight to the pool as
+    # its `check` callback (`enable_checks` in the postgresql backend), and
+    # without it psycopg_pool defaults to check=None and validates nothing —
+    # so after a Postgres restart the pool serves dead connections forever.
     # See the 2026-08-21 shared-Postgres restart.
-    DATABASES["default"]["OPTIONS"] = {
-        "pool": {"check": ConnectionPool.check_connection}
-    }
+    #
+    # Do NOT also pass `check` in the pool options: Django already passes it
+    # and psycopg_pool raises "got multiple values for keyword argument
+    # 'check'" at first use, which crash-loops the container.
+    DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+    DATABASES["default"]["OPTIONS"] = {"pool": True}
 
 # Password validation
 AUTH_PASSWORD_VALIDATORS = [
