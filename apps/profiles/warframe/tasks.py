@@ -33,6 +33,10 @@ STATE_KEY = "questlog:steam:warframe_state"
 STATE_TTL = 3600  # 1 hour — auto-resets if polling stops
 STALENESS_THRESHOLD_HOURS = 48
 LAST_ARCHIVE_KEY = "questlog:steam:warframe_last_archive"
+# Steam lifetime playtime at the previous staleness check. No TTL: the
+# comparison is against the last check a day ago, so an expiring key would
+# erase the baseline and silence the alarm.
+PLAYTIME_KEY = "questlog:steam:warframe_playtime_minutes"
 # Archive at most this often during an active session — conservative vs DE's
 # unofficial endpoint (the home IP also logs into the game). ~2 calls/hour.
 PERIODIC_INTERVAL = 1800  # 30 minutes
@@ -159,18 +163,41 @@ def staleness_alert_needed(
     return age_hours > threshold_hours
 
 
-def _warframe_played_recently() -> bool:
-    return asyncio.run(_warframe_played_recently_async())
+def played_since_last_check(previous_minutes: int | None, current_minutes: int | None) -> bool:
+    """Has Steam's lifetime playtime moved since we last looked?
+
+    This replaced a `playtime_2weeks > 0` test, which asked the wrong question.
+    That window is fourteen days wide and the staleness threshold is 48 hours,
+    so it stayed true for a fortnight after the last session: stop playing, and
+    the alert fired every day for twelve days running while nothing was wrong.
+    It could not tell "played yesterday" from "played a fortnight ago".
+
+    A rise in lifetime playtime since the previous check means play happened in
+    that interval — which, paired with a stale archive, is the actual failure
+    being watched for. No baseline yet means no opinion: the first run after a
+    deploy records one and stays quiet rather than guessing.
+    """
+    if previous_minutes is None or current_minutes is None:
+        return False
+    return current_minutes > previous_minutes
 
 
-async def _warframe_played_recently_async() -> bool:
+def _warframe_playtime_minutes() -> int | None:
+    return asyncio.run(_warframe_playtime_minutes_async())
+
+
+async def _warframe_playtime_minutes_async() -> int | None:
+    """Steam's lifetime Warframe playtime, or None if Steam didn't say.
+
+    None is distinct from zero — an unreachable Steam or a game missing from
+    the recent list must not read as "playtime went down".
+    """
     client = SteamClient()
     games = await client.get_recent_games(settings.STEAM_ID)
-    return any(
-        str(g.get("appid")) == str(SteamClient.WARFRAME_APPID)
-        and (g.get("playtime_2weeks", 0) or 0) > 0
-        for g in games
-    )
+    for game in games:
+        if str(game.get("appid")) == str(SteamClient.WARFRAME_APPID):
+            return game.get("playtime_forever") or 0
+    return None
 
 
 @shared_task(bind=True, ignore_result=True, name="apps.profiles.warframe.tasks.check_warframe_staleness")
@@ -191,7 +218,17 @@ def check_warframe_staleness(self):
         return
 
     now = timezone.now()
-    played_recently = _warframe_played_recently()
+
+    # Compare against the playtime seen at the previous check, then record the
+    # new one whatever the outcome, so a missed alert can't wedge the baseline.
+    redis_client = redis.from_url(settings.REDIS_URL)
+    previous_raw = redis_client.get(PLAYTIME_KEY)
+    previous_minutes = int(previous_raw) if previous_raw else None
+    current_minutes = _warframe_playtime_minutes()
+    if current_minutes is not None:
+        redis_client.set(PLAYTIME_KEY, current_minutes)
+
+    played_recently = played_since_last_check(previous_minutes, current_minutes)
     if not staleness_alert_needed(profile.last_synced, now, played_recently):
         return
 

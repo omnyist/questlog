@@ -17,6 +17,7 @@ from apps.profiles.warframe.api import summarize_by_acquisition
 from apps.profiles.warframe.management.commands.sync_warframe_catalog import (
     _acquisition,
 )
+from apps.profiles.warframe.tasks import played_since_last_check
 from apps.profiles.warframe.tasks import poll_steam_warframe
 from apps.profiles.warframe.tasks import staleness_alert_needed
 
@@ -287,3 +288,34 @@ def _steam_http_error(status_code: int) -> httpx.HTTPStatusError:
     request = httpx.Request("GET", "https://api.steampowered.com/x?key=SECRET&steamids=1")
     response = httpx.Response(status_code, request=request)
     return httpx.HTTPStatusError(f"Server error '{status_code}'", request=request, response=response)
+
+
+class TestPlayedSinceLastCheck:
+    """The delta that replaced `playtime_2weeks > 0`.
+
+    The old test stayed true for fourteen days after a session while the
+    staleness threshold is 48 hours, so stopping play produced a daily alert
+    for twelve days with nothing actually wrong.
+    """
+
+    def test_playtime_rose(self):
+        assert played_since_last_check(66_483, 66_540) is True
+
+    def test_playtime_unchanged_is_not_play(self):
+        # The false positive this replaced: played, stopped, archive fine.
+        assert played_since_last_check(66_483, 66_483) is False
+
+    def test_no_baseline_stays_quiet(self):
+        # First run after a deploy records a baseline rather than guessing.
+        assert played_since_last_check(None, 66_483) is False
+
+    def test_steam_silence_is_not_a_decrease(self):
+        # None means Steam did not say, which must not read as playtime falling.
+        assert played_since_last_check(66_483, None) is False
+
+    def test_both_unknown(self):
+        assert played_since_last_check(None, None) is False
+
+    def test_a_drop_is_not_play(self):
+        # Shouldn't happen, but a reset counter must not look like activity.
+        assert played_since_last_check(66_483, 100) is False
