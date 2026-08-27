@@ -33,13 +33,25 @@ _URL_SECRET_RE = re.compile(
 )
 
 
+# A REPL frame anywhere in the stack means a human was typing: real
+# server/Celery/command stacks never contain these.
+_TYPED_AT_A_PROMPT = {"<stdin>", "<console>"}
+
+
 def _sentry_before_send(event, hint):
     """Drop noise and redact URL secrets before sending.
 
-    Drops: DisallowedHost scans, and interactive-shell tracebacks — the prod
-    container runs DEBUG=False, so `manage.py shell` / piped REPL sessions have
-    Sentry's excepthook active and typos there shouldn't page. Those frames
-    have filename "<stdin>"; real server/Celery/command stacks never do.
+    Drops: DisallowedHost scans, and code a human typed at the prod container —
+    it runs DEBUG=False, so Sentry's excepthook is live and a typo in
+    `manage.py shell` or a `docker exec ... python -c` one-liner pages as if it
+    were a production fault.
+
+    Two markers, matched differently on purpose. "<stdin>"/"<console>" are REPL
+    frames and can sit anywhere in the stack, since the outermost frame there is
+    manage.py. "<string>" is what `python -c` names its program, and it is only
+    trusted as the OUTERMOST frame: libraries build classes with exec() and
+    leave "<string>" frames deep in otherwise real stacks, so matching it
+    anywhere would silently discard genuine production errors.
 
     Redacts: secrets in URL query strings from exception messages.
     """
@@ -47,7 +59,10 @@ def _sentry_before_send(event, hint):
         return None
     for exc in event.get("exception", {}).get("values", []):
         frames = (exc.get("stacktrace") or {}).get("frames") or []
-        if any(f.get("filename") == "<stdin>" for f in frames):
+        if any(f.get("filename") in _TYPED_AT_A_PROMPT for f in frames):
+            return None
+        # Sentry orders frames outermost-first, so frames[0] is the program.
+        if frames and frames[0].get("filename") == "<string>":
             return None
         if exc.get("value"):
             exc["value"] = _URL_SECRET_RE.sub(r"\1[Filtered]", exc["value"])

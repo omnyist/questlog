@@ -19,6 +19,23 @@ class TestSentryBeforeSend:
         event = _event_with_frames("apps/library/models.py", "<stdin>")
         assert _sentry_before_send(event, {}) is None
 
+    def test_drops_python_dash_c_one_liner(self):
+        # `docker exec ... python -c "..."` names its program "<string>" and it
+        # is the outermost frame. QUESTLOG-5 was a typo in exactly this shape.
+        event = _event_with_frames("<string>")
+        assert _sentry_before_send(event, {}) is None
+
+    def test_drops_console_frame(self):
+        event = _event_with_frames("manage.py", "<console>")
+        assert _sentry_before_send(event, {}) is None
+
+    def test_keeps_library_exec_frame_deep_in_a_real_stack(self):
+        # Libraries build classes with exec() and leave "<string>" behind.
+        # Matching that anywhere would bin genuine production errors, so
+        # "<string>" only counts as the outermost frame.
+        event = _event_with_frames("apps/library/api.py", "<string>", "pydantic/main.py")
+        assert _sentry_before_send(event, {}) is event
+
     def test_keeps_real_server_traceback(self):
         event = _event_with_frames("apps/profiles/warframe/tasks.py", "httpx/_client.py")
         assert _sentry_before_send(event, {}) is event
