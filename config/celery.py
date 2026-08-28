@@ -5,6 +5,13 @@ import os
 
 from celery import Celery
 from celery.schedules import crontab
+from celery.signals import task_prerun
+from celery.signals import task_success
+from celery.signals import worker_ready
+
+from config.heartbeat import beat_boot
+from config.heartbeat import beat_liveness
+from config.heartbeat import beat_work
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +41,31 @@ app.conf.beat_schedule = {
         "schedule": crontab(hour=12, minute=0),  # Daily 12:00 UTC
     },
 }
+
+
+# Heartbeats via signals, not in the task bodies. "A task started" and "a
+# task succeeded" are precisely the liveness/work distinction the convention
+# asks for, and celery already publishes both -- so a task added next year is
+# monitored without anyone remembering to instrument it.
+#
+# The cadence is set by the most frequent task: poll-steam-warframe every 300s.
+# The daily and weekly entries beat too, but nothing depends on them to keep
+# the signal fresh.
+
+
+@worker_ready.connect
+def _beat_boot(**_kwargs) -> None:
+    beat_boot()
+
+
+@task_prerun.connect
+def _beat_liveness(**_kwargs) -> None:
+    beat_liveness()
+
+
+@task_success.connect
+def _beat_work(**_kwargs) -> None:
+    beat_work()
 
 
 @app.task(bind=True, ignore_result=True)
