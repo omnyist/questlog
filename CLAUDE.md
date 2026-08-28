@@ -160,7 +160,7 @@ This data should be migrated to Questlog and enriched with IGDB metadata.
 Project-specific deltas (everything else is inherited from the import above and ~/.claude/CLAUDE.md):
 
 - **Commits:** No restriction. Pushing to `main` deploys.
-- **Port:** 7176. **Redis logical DB:** `/2`.
+- **Ports, Redis DB, container names:** not restated here. `recall("<project> port")` or `lookup` against `registry/allocations.md`, which is canonical and derived from what is actually listening. A copy in this file is a second place to be wrong.
 - **Auth:** Tier-2 `Bearer` `ApiKeyAuth` enforced on write routes (read GETs open).
 - **Test-gating reference:** questlog is the proven impl — `deploy` job `needs: test`, ephemeral `docker run` Postgres/Redis on offset ports for the macOS runner. Other backends mirror this.
 - Celery active (static beat schedule; in-memory scheduler for the Python 3.13 dbm workaround).
@@ -171,7 +171,7 @@ Project-specific deltas (everything else is inherited from the import above and 
 Development: `docker compose up`
 - PostgreSQL on 5432
 - Redis on 6379
-- Django server on 7176 (avoiding Synthform's 7175)
+- Django server on 7176 (synthform is 8008; 7175 is synthhome — the note this replaced had them confused)
 
 ## Relationship to Other Projects
 
