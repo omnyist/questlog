@@ -5,7 +5,6 @@ description = "Personal gaming data backend - tracks games, playthroughs, and cu
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "celery>=5.6.0",
     "daphne>=4.1.0",
     "django>=6.1",
     "django-cors-headers>=4.9.0",

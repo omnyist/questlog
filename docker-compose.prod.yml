@@ -19,11 +19,23 @@ services:
       sh -c "uv run python manage.py migrate &&
              uv run daphne -b 0.0.0.0 -p 7176 config.asgi:application"
 
-  celery:
+  # Two containers, not one, and not the single celery worker they replace.
+  #
+  # Cadences here span two orders of magnitude -- 300s against daily and weekly
+  # -- and a heartbeat threshold is per worker. One container would have one
+  # identity and therefore one number, so a dead weekly sync would be invisible
+  # for six days behind a healthy poller. Two also means `docker ps` tells the
+  # truth about both, since Docker's restart machinery sees one lifecycle per
+  # container.
+  #
+  # Cost, measured 2026-08-28: questlog-celery was 715 MiB against a 105 MiB
+  # Django process -- a prefork pool running 194 tasks a day. These are ~100 MiB
+  # each.
+  warframe:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: questlog-celery
+    container_name: questlog-warframe
     restart: unless-stopped
     env_file:
       - .env
@@ -33,7 +45,23 @@ services:
     networks:
       - default
       - synth
-    command: uv run celery -A config worker -l info -B
+    command: uv run python manage.py poll_steam_warframe --loop
+
+  warframe-upkeep:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: questlog-warframe-upkeep
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://questlog:questlog@synthcore-postgres:5432/questlog
+      - REDIS_URL=redis://synthcore-redis:6379/2
+    networks:
+      - default
+      - synth
+    command: uv run python manage.py warframe_upkeep --loop
 
 networks:
   default:

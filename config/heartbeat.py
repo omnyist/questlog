@@ -12,9 +12,9 @@ reasoning. The shape:
 question -- on 2026-08-21 three ingesters in a sibling project held dead
 database connections for three hours while every container read Up.
 
-**Wired through celery signals rather than into the tasks themselves.** The
-distinction between "a task started" and "a task succeeded" is exactly the
-liveness/work split, and celery already publishes both. Beating in the task
+**Called from the loop containers, not from a scheduler.** Celery was removed
+on 2026-08-28 and these were briefly wired through its signals; the loops call
+them directly now, at the same seams synthhome uses. Beating in the task
 bodies would mean every future task has to remember to do it -- which is the
 enrollment failure that left synthhome-vesync unmonitored for months, moved
 one level down.
@@ -41,9 +41,8 @@ KEY_PREFIX = "hb"
 # Redis from accumulating keys for workers that no longer exist.
 TTL_SECONDS = 24 * 60 * 60
 
-# The celery container is one worker from the monitor's point of view; the
-# beat scheduler and the pool live in the same process.
-WORKER = "celery"
+# Callers pass their own name -- there is no single worker here any more.
+# See config/health.py for the enrolled set and their thresholds.
 
 _warned = False
 
@@ -75,7 +74,7 @@ def _write(worker: str, kind: str) -> None:
                 pass
 
 
-def beat_boot(worker: str = WORKER) -> None:
+def beat_boot(worker: str) -> None:
     """Record that the worker process started.
 
     Without this the only anchor for "how long has it been silent?" is the web
@@ -85,9 +84,9 @@ def beat_boot(worker: str = WORKER) -> None:
     _write(worker, "boot")
 
 
-def beat_liveness(worker: str = WORKER) -> None:
+def beat_liveness(worker: str) -> None:
     _write(worker, "liveness")
 
 
-def beat_work(worker: str = WORKER) -> None:
+def beat_work(worker: str) -> None:
     _write(worker, "work")

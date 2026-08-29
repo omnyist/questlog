@@ -41,12 +41,17 @@ def health_check(request: HttpRequest) -> JsonResponse:
     return JsonResponse(status, status=http_status)
 
 
-# Set by the most frequent periodic task (poll-steam-warframe, every 300s);
-# 3x allows a missed cycle without paging. Per-worker because cadences differ
-# and a shared constant either pages against the slow one or never catches the
-# fast one.
-WORKER_THRESHOLDS = {"celery": 900}
-LIVENESS_THRESHOLDS = {"celery": 900}
+# Two workers since Celery was removed on 2026-08-28, and the reason they are
+# two containers is visible right here: these numbers differ by two orders of
+# magnitude. One container would have one identity and therefore one threshold,
+# so a dead weekly catalog sync would hide for six days behind a healthy poller.
+#
+#   warframe          300s Steam poll  -> 900s, 3x, one missed cycle is not a page
+#   warframe-upkeep   ticks every 60s  -> the JOBS are daily/weekly, but the loop
+#                                         beats every tick, so the threshold
+#                                         follows the tick and not the jobs.
+WORKER_THRESHOLDS = {"warframe": 900, "warframe-upkeep": 600}
+LIVENESS_THRESHOLDS = {"warframe": 900, "warframe-upkeep": 600}
 
 # How long a worker may beat with no threshold before its absence is a fault
 # rather than a deploy in progress.
@@ -59,7 +64,7 @@ def _worker_health(status: dict) -> None:
     """Attach worker heartbeat ages, or say plainly that we cannot tell.
 
     Redis unreachable renders as `unknown`, never as an error and never as a
-    list of stale workers: a Redis outage and a dead celery container are
+    list of stale workers: a Redis outage and a dead worker container are
     different incidents, and collapsing them sends someone to the wrong place.
     """
     client = None

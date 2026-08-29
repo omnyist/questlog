@@ -2,7 +2,7 @@
 
 `standards/conventions/health.md` is the contract; synthhome is the reference
 implementation. These tests pin the two properties that matter most here and
-that are easiest to get wrong for a celery container: a healthy worker stays
+that are easiest to get wrong for a looping container: a healthy worker stays
 silent, and a worker nobody enrolled does not.
 
 No database: these call the worker check directly with a fake Redis, so they
@@ -70,8 +70,8 @@ def test_a_task_that_finds_nothing_is_not_a_dead_worker():
     playing Warframe most of the time. The work beat fires on task success,
     not on the task having found something, so a quiet day must look identical
     to a busy one."""
-    quiet = WORKER_THRESHOLDS["celery"] - 60
-    status = _run(FakeRedis(_beats(celery_work=quiet)))
+    quiet = WORKER_THRESHOLDS["warframe"] - 60
+    status = _run(FakeRedis(_beats(warframe_work=quiet)))
 
     assert status["services"]["workers"] == "ok"
     assert status["status"] == "ok"
@@ -81,19 +81,19 @@ def test_a_stale_work_beat_degrades_and_names_the_worker():
     """A broker that dispatches into a pool that cannot reach Postgres looks
     exactly like this: tasks keep starting, so liveness stays fresh, and none
     of them ever succeed."""
-    stale = WORKER_THRESHOLDS["celery"] + 120
-    status = _run(FakeRedis(_beats(celery_work=stale)))
+    stale = WORKER_THRESHOLDS["warframe"] + 120
+    status = _run(FakeRedis(_beats(warframe_work=stale)))
 
     assert status["status"] == "degraded"
-    assert "celery.work" in status["services"]["workers"]
+    assert "warframe.work" in status["services"]["workers"]
 
 
 def test_a_worker_that_never_beat_is_not_forgiven_forever():
     """A process that never starts is the loudest possible failure and must
     not render as silence."""
     beats = _beats()
-    del beats["hb:celery:work"]
-    beats["hb:celery:boot"] = str(time.time() - 99_999)
+    del beats["hb:warframe:work"]
+    beats["hb:warframe:boot"] = str(time.time() - 99_999)
 
     status = _run(FakeRedis(beats))
 
@@ -121,4 +121,4 @@ def test_redis_down_is_unknown_not_a_pile_of_dead_workers():
     status = _run(FakeRedis(raises=True))
 
     assert "unknown" in status["services"]["workers"]
-    assert "celery" not in status["services"]["workers"]
+    assert "warframe" not in status["services"]["workers"]

@@ -1,12 +1,22 @@
-"""Celery tasks for the Warframe archive.
+"""Warframe archive jobs. Plain functions, driven by looping containers.
 
-The `poll_steam_warframe` task is scheduled every 5 minutes via Celery
-beat (see `config/celery.py`). It detects Warframe session transitions
-via the Steam Web API and triggers an archive on session end.
+These were Celery tasks until 2026-08-28. They are called now by two
+management commands -- `poll_steam_warframe --loop` every 300s, and
+`warframe_upkeep --loop` for the daily and weekly work -- because a broker was
+buying nothing here: beat was the only producer, queue depth never left zero,
+and the 715 MiB prefork pool ran 194 tasks a day.
 
-`check_warframe_staleness` runs daily as a safety net — it alerts (Sentry +
-event) if the archive has gone stale despite recent play, catching silent
-failures like an upstream endpoint moving.
+`poll_steam_warframe` detects Warframe session transitions via the Steam Web
+API and triggers an archive on session end.
+
+`check_warframe_staleness` is the daily safety net: it alerts (Sentry + event)
+if the archive has gone stale despite recent play, catching failures like an
+upstream endpoint moving -- the case where nothing is even attempted.
+
+`sync_catalog` refreshes the WFCD item catalog weekly so newly-released frames
+classify.
+
+`bind=True` was vestigial on all three; nothing ever touched `self`.
 """
 
 from __future__ import annotations
@@ -19,7 +29,6 @@ from datetime import datetime
 import httpx
 import redis
 import sentry_sdk
-from celery import shared_task
 from django.conf import settings
 from django.core.management import call_command
 from django.utils import timezone
@@ -42,8 +51,7 @@ PLAYTIME_KEY = "questlog:steam:warframe_playtime_minutes"
 PERIODIC_INTERVAL = 1800  # 30 minutes
 
 
-@shared_task(bind=True, ignore_result=True, name="apps.profiles.warframe.tasks.poll_steam_warframe")
-def poll_steam_warframe(self):
+def poll_steam_warframe():
     """Detect Warframe session transitions and trigger archive on session end.
 
     Logic:
@@ -163,7 +171,9 @@ def staleness_alert_needed(
     return age_hours > threshold_hours
 
 
-def played_since_last_check(previous_minutes: int | None, current_minutes: int | None) -> bool:
+def played_since_last_check(
+    previous_minutes: int | None, current_minutes: int | None
+) -> bool:
     """Has Steam's lifetime playtime moved since we last looked?
 
     This replaced a `playtime_2weeks > 0` test, which asked the wrong question.
@@ -200,8 +210,7 @@ async def _warframe_playtime_minutes_async() -> int | None:
     return None
 
 
-@shared_task(bind=True, ignore_result=True, name="apps.profiles.warframe.tasks.check_warframe_staleness")
-def check_warframe_staleness(self):
+def check_warframe_staleness():
     """Daily safety net: alert if the archive is stale despite recent play.
 
     Catches failure modes where no archive is even attempted (poller broken,
@@ -241,12 +250,14 @@ def check_warframe_staleness(self):
     sentry_sdk.capture_message(msg, level="error")
     publish_warframe_event(
         "warframe:archive_stale",
-        {"last_synced": profile.last_synced.isoformat(), "age_hours": round(age_hours, 1)},
+        {
+            "last_synced": profile.last_synced.isoformat(),
+            "age_hours": round(age_hours, 1),
+        },
     )
 
 
-@shared_task(bind=True, ignore_result=True, name="apps.profiles.warframe.tasks.sync_catalog")
-def sync_catalog(self):
+def sync_catalog():
     """Refresh the WFCD item catalog weekly so newly-released frames classify.
 
     Idempotent — update_or_create on uniqueName. Logs and swallows errors so a
