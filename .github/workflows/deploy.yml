@@ -41,7 +41,12 @@ jobs:
 
     - name: Start test services
       run: |
-        docker rm -f questlog-ci-pg questlog-ci-redis 2>/dev/null || true
+        # `docker rm -fv`, not `docker rm -f`. The postgres image declares an
+        # anonymous VOLUME, so removing the container without -v leaves its data
+        # directory behind -- roughly 65 MB abandoned on the runner per CI run. By
+        # 2026-08-30 Saya held 288 of them, about 18 GB, and nothing pointed at the
+        # cause because each individual run looked like it cleaned up after itself.
+        docker rm -fv questlog-ci-pg questlog-ci-redis 2>/dev/null || true
         docker run -d --name questlog-ci-pg \
           -e POSTGRES_DB=questlog -e POSTGRES_USER=questlog -e POSTGRES_PASSWORD=questlog \
           -p 5439:5432 postgres:16
@@ -56,7 +61,7 @@ jobs:
 
     - name: Stop test services
       if: always()
-      run: docker rm -f questlog-ci-pg questlog-ci-redis 2>/dev/null || true
+      run: docker rm -fv questlog-ci-pg questlog-ci-redis 2>/dev/null || true
 
   deploy:
     needs: test
