@@ -177,7 +177,22 @@ def production_database_extras(engine: str, *, under_test: bool) -> dict:
         return {}
     return {
         "CONN_HEALTH_CHECKS": True,
-        "OPTIONS": {"pool": True},
+        # min_size 1, not psycopg's default 4.
+        #
+        # `{"pool": True}` reads as "pooling on" and actually means a FIXED four
+        # connections: psycopg resolves max_size=None to max_size=min_size, so the pool
+        # never grows past four and never drops below it either. Every container pays
+        # four whether it serves one request a minute or none, which ties the rack's
+        # connection count to CONTAINER COUNT rather than to load — and this rack keeps
+        # splitting work into more, smaller containers.
+        #
+        # Measured 2026-08-30 on the shared cluster: 80 of 81 connections idle in every
+        # sample over 40s, against max_connections=100. synthhome alone held 36 across
+        # nine containers while committing 9M transactions at a concurrency of one.
+        #
+        # Same ceiling, a tenth of the floor. Idle connections above min_size are
+        # reclaimed after max_idle (600s), so a burst still gets four.
+        "OPTIONS": {"pool": {"min_size": 1, "max_size": 4}},
     }
 
 
