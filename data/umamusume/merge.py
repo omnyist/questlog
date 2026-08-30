@@ -215,6 +215,44 @@ def stat_conflicts(run: dict, disputed: list[str]) -> str | None:
     return None
 
 
+def outfit_owners(runs: list[dict]) -> tuple[dict[str, str], dict[str, Counter]]:
+    """Which character each outfit belongs to, by majority across the archive.
+
+    Majority rather than first-seen on purpose: one misread run would otherwise
+    define the outfit's owner and then flag every correct run as the conflict.
+    """
+    tally: dict[str, Counter] = {}
+    for run in runs:
+        outfit, character = run.get("outfit_title"), run.get("character")
+        if outfit and character:
+            tally.setdefault(outfit, Counter())[character] += 1
+    return {o: c.most_common(1)[0][0] for o, c in tally.items()}, tally
+
+
+def identity_conflicts(run: dict, owners: dict[str, str], tally: dict[str, Counter]) -> str | None:
+    """Flag a run whose character disagrees with the rest of its outfit.
+
+    An outfit belongs to exactly one uma, so the archive cross-checks itself:
+    73% of runs wear an outfit that has been seen before, and for those the
+    character is verifiable without looking at the screenshot.
+
+    This exists because voting across a run's own screens cannot catch a misread
+    every screen agrees on. On 2026-08-27 the model read [Ruler of Japan]
+    Special Week as Oguri Cap on all three of its screens, so the run's internal
+    consensus was unanimous and wrong; only the outfit gave it away, and only
+    because a separate rank slip happened to draw a human eye to that run.
+    """
+    outfit = run.get("outfit_title")
+    if not outfit or outfit not in owners:
+        return None
+    owner = owners[outfit]
+    if run.get("character") == owner:
+        return None
+    others = sum(n for name, n in tally[outfit].items() if name == owner)
+    return (f"outfit {outfit!r} is {owner} in {others} other run(s), "
+            f"but this run says {run.get('character')}")
+
+
 def build_run(group: list[dict]) -> dict | None:
     real = [r for r in group if r["screen_type"] != "other"]
     if not real:
@@ -344,6 +382,12 @@ def main() -> int:
                 f"screen — likely another trainer's uma being viewed, not a completed career"
             )
 
+    # Needs every run in hand: the owner of an outfit is decided by majority
+    # across the archive, not by any single run.
+    owners, tally = outfit_owners(runs)
+    for run in runs:
+        run["identity_warning"] = identity_conflicts(run, owners, tally)
+
     pathlib.Path(args.out).write_text(json.dumps(runs, indent=2))
     suspects = [r for r in runs if r["suspect"]]
 
@@ -385,6 +429,21 @@ def main() -> int:
     for r in flagged:
         print(f"  {r['run_date'][:10]}  {r['character']}: {r['warning']}")
         print(f"     {', '.join(r['source_images'])}")
+
+    identity_flagged = [r for r in runs if r["identity_warning"]]
+    print(f"\nidentity conflicts (needs a human eye): {len(identity_flagged)}")
+    for r in identity_flagged:
+        print(f"  {r['run_date'][:10]}  {r['identity_warning']}")
+        print(f"     {', '.join(r['source_images'])}")
+
+    # Not a fault — just the runs whose character nothing else can corroborate.
+    # Listed separately so they never dilute an actual conflict above.
+    lonely = sorted(o for o, c in tally.items() if sum(c.values()) == 1)
+    print(f"\noutfits worn by exactly one run — character uncorroborated: {len(lonely)}")
+    for outfit in lonely:
+        who = owners[outfit]
+        when = next(r["run_date"][:10] for r in runs if r["outfit_title"] == outfit)
+        print(f"  {when}  [{outfit}] {who}")
 
     stat_flagged = [r for r in runs if r["stat_warning"]]
     print(f"\nstat integrity problems (needs a human eye): {len(stat_flagged)}")
