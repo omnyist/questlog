@@ -17,7 +17,7 @@ services:
       - synth
     command: >
       sh -c "uv run python manage.py migrate &&
-             uv run daphne -b 0.0.0.0 -p 7176 config.asgi:application"
+             uv run daphne -b 0.0.0.0 -p 7176 --application-close-timeout 60 config.asgi:application"
 
   # Two containers, not one, and not the single celery worker they replace.
   #
