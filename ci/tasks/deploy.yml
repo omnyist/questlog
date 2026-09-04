@@ -1,0 +1,61 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: alpine
+    tag: "3.20"
+
+inputs:
+  - name: repo
+
+params:
+  SSH_KEY: ((saya_ssh_key))
+  KNOWN_HOSTS: ((saya_known_hosts))
+  SECRET_KEY: ((questlog_secret_key))
+  TWITCH_CLIENT_ID: ((questlog_twitch_client_id))
+  TWITCH_CLIENT_SECRET: ((questlog_twitch_client_secret))
+  BUNGIE_API_KEY: ((questlog_bungie_api_key))
+  STEAM_API_KEY: ((questlog_steam_api_key))
+  STEAM_ID: ((questlog_steam_id))
+  WARFRAME_ACCOUNT_ID: ((questlog_warframe_account_id))
+  API_KEY: ((questlog_api_key))
+  SENTRY_DSN: ((questlog_sentry_dsn))
+
+run:
+  path: sh
+  args:
+    - -ec
+    - |
+      apk add --no-cache openssh-client rsync >/dev/null
+      mkdir -p ~/.ssh
+      echo "$SSH_KEY" > ~/.ssh/id_ed25519
+      chmod 600 ~/.ssh/id_ed25519
+      echo "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      SSH="ssh -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts -o ConnectTimeout=10 Avalonstar@10.0.20.10"
+      RSYNC_SSH="ssh -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts -o ConnectTimeout=10"
+
+      rsync -a --delete -e "$RSYNC_SSH" repo/ Avalonstar@10.0.20.10:~/ci/deploys/questlog/
+
+      cat > env-payload <<ENVEOF
+      DEBUG=False
+      SECRET_KEY=$SECRET_KEY
+      ALLOWED_HOSTS=questlog.synthrack.studio,questlog.omnyist.com,questlog-server,saya,localhost
+      CSRF_TRUSTED_ORIGINS=https://questlog.synthrack.studio,https://questlog.omnyist.com
+      DATABASE_URL=postgresql://questlog:questlog@synthcore-postgres:5432/questlog
+      REDIS_URL=redis://synthcore-redis:6379/2
+      TWITCH_CLIENT_ID=$TWITCH_CLIENT_ID
+      TWITCH_CLIENT_SECRET=$TWITCH_CLIENT_SECRET
+      BUNGIE_API_KEY=$BUNGIE_API_KEY
+      STEAM_API_KEY=$STEAM_API_KEY
+      STEAM_ID=$STEAM_ID
+      WARFRAME_ACCOUNT_ID=$WARFRAME_ACCOUNT_ID
+      WARFRAME_PLATFORM=pc
+      API_KEY=$API_KEY
+      SENTRY_DSN=$SENTRY_DSN
+      ENVEOF
+
+      scp -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts env-payload Avalonstar@10.0.20.10:~/ci/deploys/questlog/.env
+
+      $SSH 'cd ~/ci/deploys/questlog && bash ci/deploy.sh && bash ci/verify.sh'

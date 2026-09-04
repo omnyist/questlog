@@ -1,0 +1,24 @@
+platform: linux
+
+image_resource:
+  type: registry-image
+  source:
+    repository: python
+    # Pinned to match prod and what uv.lock resolved against -- unpinned,
+    # uv drifts to the newest CPython (3.14 as of 2026-09), which has no
+    # matching cbor2 wheel and falls back to a source build that fails
+    # without a Rust toolchain in the image. Using this exact image (not
+    # a generic base + uv-managed interpreter) makes the pin structural
+    # rather than a flag someone can forget to pass.
+    tag: "3.13-slim"
+
+inputs:
+  - name: repo
+
+run:
+  path: sh
+  args:
+    - -ec
+    - |
+      cd repo
+      sh ci/test.sh
