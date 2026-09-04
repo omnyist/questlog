@@ -4,6 +4,7 @@
 # that's the host actually running them.
 set -eu
 
+apt-get update -qq && apt-get install -y -qq curl >/dev/null
 curl -LsSf https://astral.sh/uv/install.sh | sh
 export PATH="$HOME/.local/bin:$PATH"
 
