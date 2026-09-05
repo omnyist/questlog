@@ -1,0 +1,57 @@
+name: Test
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+# The test job spins up fixed-name containers on fixed ports (see below), so
+# two runs of this workflow at once would have one `docker rm -f` the other's
+# database mid-test. Serialise per repo rather than per ref: a PR run and a
+# main run collide exactly as hard as two main runs.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: self-hosted
+    # Self-hosted runner is macOS — GH Actions `services:` are Linux-only, so
+    # spin throwaway Postgres/Redis via `docker run` (OrbStack) instead.
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up uv
+      uses: astral-sh/setup-uv@v5
+      with:
+        # Pin to prod's Python (python:3.13-slim) and what uv.lock resolved
+        # against. Unpinned, the runner drifts to the newest CPython (3.14),
+        # which has no matching cbor2 wheel and falls back to a source build
+        # that fails on the runner's Rust toolchain.
+        python-version: "3.13"
+
+    - name: Start test services
+      run: |
+        # `docker rm -fv`, not `docker rm -f`. The postgres image declares an
+        # anonymous VOLUME, so removing the container without -v leaves its data
+        # directory behind -- roughly 65 MB abandoned on the runner per CI run. By
+        # 2026-08-30 Saya held 288 of them, about 18 GB, and nothing pointed at the
+        # cause because each individual run looked like it cleaned up after itself.
+        docker rm -fv questlog-ci-pg questlog-ci-redis 2>/dev/null || true
+        docker run -d --name questlog-ci-pg \
+          -e POSTGRES_DB=questlog -e POSTGRES_USER=questlog -e POSTGRES_PASSWORD=questlog \
+          -p 5439:5432 postgres:16
+        docker run -d --name questlog-ci-redis -p 6399:6379 redis:alpine
+        timeout 60 sh -c 'until docker exec questlog-ci-pg pg_isready -U questlog; do sleep 1; done'
+
+    - name: Run tests
+      env:
+        DATABASE_URL: postgresql://questlog:questlog@localhost:5439/questlog
+        REDIS_URL: redis://localhost:6399/0
+      run: uv run --group dev pytest -q
+
+    - name: Stop test services
+      if: always()
+      run: docker rm -fv questlog-ci-pg questlog-ci-redis 2>/dev/null || true

@@ -38,6 +38,21 @@ run:
 
       rsync -a --delete -e "$RSYNC_SSH" repo/ Avalonstar@10.0.20.10:~/ci/deploys/questlog/
 
+      # Compose's own .env parser re-interpolates $-references when it reads
+      # this file back on Saya, so a literal $ inside a secret (SECRET_KEY's
+      # alphabet includes it) gets swallowed as a bogus variable reference
+      # and silently truncates the value. Escape every secret to $$ before
+      # it lands in the heredoc so Compose sees a literal dollar sign.
+      SECRET_KEY=$(printf '%s' "$SECRET_KEY" | sed 's/\$/$$/g')
+      TWITCH_CLIENT_ID=$(printf '%s' "$TWITCH_CLIENT_ID" | sed 's/\$/$$/g')
+      TWITCH_CLIENT_SECRET=$(printf '%s' "$TWITCH_CLIENT_SECRET" | sed 's/\$/$$/g')
+      BUNGIE_API_KEY=$(printf '%s' "$BUNGIE_API_KEY" | sed 's/\$/$$/g')
+      STEAM_API_KEY=$(printf '%s' "$STEAM_API_KEY" | sed 's/\$/$$/g')
+      STEAM_ID=$(printf '%s' "$STEAM_ID" | sed 's/\$/$$/g')
+      WARFRAME_ACCOUNT_ID=$(printf '%s' "$WARFRAME_ACCOUNT_ID" | sed 's/\$/$$/g')
+      API_KEY=$(printf '%s' "$API_KEY" | sed 's/\$/$$/g')
+      SENTRY_DSN=$(printf '%s' "$SENTRY_DSN" | sed 's/\$/$$/g')
+
       cat > env-payload <<ENVEOF
       DEBUG=False
       SECRET_KEY=$SECRET_KEY
