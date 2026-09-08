@@ -21,20 +21,16 @@ a cheap tick that re-checks the clock is not.
 from __future__ import annotations
 
 import logging
-import time
 from datetime import UTC
 from datetime import datetime
 
 import redis
 from django.conf import settings
 from django.core.management.base import BaseCommand
-from django.db import close_old_connections
 
 from apps.profiles.warframe.tasks import check_warframe_staleness
 from apps.profiles.warframe.tasks import sync_catalog
-from config.heartbeat import beat_boot
-from config.heartbeat import beat_liveness
-from config.heartbeat import beat_work
+from config.worker_loop import run_worker_loop
 
 logger = logging.getLogger(__name__)
 
@@ -98,27 +94,21 @@ class Command(BaseCommand):
             self.stdout.write("Nothing to do without --loop or --force.")
             return
 
-        beat_boot(WORKER)
         client = _client()
-        while True:
-            beat_liveness(WORKER)
-            now = datetime.now(UTC)
-            try:
-                # Almost every tick only touches Redis, so a connection held
-                # from process start could go dead and sit unnoticed for a
-                # full day before the staleness check next runs. Release it
-                # on every tick regardless — cheap when there is nothing to
-                # validate, and it is what makes the once-a-day ORM call
-                # trustworthy when it does fire.
-                close_old_connections()
-                self._maybe_run(client, now)
-                # The tick completing is the work. These jobs fire once a day
-                # and once a week, so beating only when one runs would report
-                # this worker dead almost always.
-                beat_work(WORKER)
-            except Exception:  # noqa: BLE001
-                logger.exception("[Warframe] upkeep tick failed")
-            time.sleep(TICK_SECONDS)
+        # `now` is computed fresh per tick inside this closure rather than
+        # threaded through run_worker_loop's zero-arg contract, so
+        # _maybe_run keeps taking an explicit `now` and stays exactly as
+        # unit-testable with an injected time as tests/test_warframe_upkeep.py
+        # already relies on. Almost every tick only touches Redis, so a
+        # connection held from process start could go dead and sit unnoticed
+        # for a full day before the staleness check next runs -- run_worker_loop
+        # releases it every tick regardless, which is what makes the
+        # once-a-day ORM call trustworthy when it does fire.
+        run_worker_loop(
+            WORKER,
+            TICK_SECONDS,
+            lambda: self._maybe_run(client, datetime.now(UTC)),
+        )
 
     def _maybe_run(self, client, now: datetime) -> None:
         if now.hour >= STALENESS_HOUR_UTC:

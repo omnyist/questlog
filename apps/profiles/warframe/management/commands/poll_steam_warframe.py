@@ -24,15 +24,10 @@ which is what you want when debugging by hand.
 
 from __future__ import annotations
 
-import time
-
 from django.core.management.base import BaseCommand
-from django.db import close_old_connections
 
 from apps.profiles.warframe.tasks import poll_steam_warframe
-from config.heartbeat import beat_boot
-from config.heartbeat import beat_liveness
-from config.heartbeat import beat_work
+from config.worker_loop import run_worker_loop
 
 WORKER = "warframe"
 
@@ -52,31 +47,8 @@ class Command(BaseCommand):
             poll_steam_warframe()
             return
 
-        # Before the first cycle, so the health endpoint can tell "never
-        # started" from "started but failing" -- the same seam synthhome uses.
-        beat_boot(WORKER)
-        while True:
-            # Liveness before the attempt, work after it succeeds. Fresh
-            # liveness with a stale work beat therefore reads "the loop is
-            # running but Steam is refusing us", which is what an expired or
-            # rate-limited API key looks like.
-            beat_liveness(WORKER)
-            try:
-                # No request cycle, so nothing else returns this connection —
-                # the same gap as synthpatch-withings and synthhive-bot on
-                # 2026-09-07. Synchronous command; call directly.
-                close_old_connections()
-                poll_steam_warframe()
-                # The cycle completing IS the work. Not "a session transition
-                # was found" -- Bryan is not playing Warframe most of the time,
-                # and gating the beat on a transition would report this worker
-                # dead for days at a stretch.
-                beat_work(WORKER)
-            except Exception:
-                self.stderr.write(
-                    "[Warframe] poll cycle failed; retrying next interval"
-                )
-                import logging
-
-                logging.getLogger(__name__).exception("poll_steam_warframe failed")
-            time.sleep(options["interval"])
+        # The cycle completing IS the work. Not "a session transition was
+        # found" -- Bryan is not playing Warframe most of the time, and
+        # gating the beat on a transition would report this worker dead for
+        # days at a stretch.
+        run_worker_loop(WORKER, options["interval"], poll_steam_warframe)
