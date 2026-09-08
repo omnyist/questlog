@@ -58,7 +58,7 @@ run:
       SECRET_KEY=$SECRET_KEY
       ALLOWED_HOSTS=questlog.synthrack.studio,questlog.omnyist.com,questlog-server,saya,localhost
       CSRF_TRUSTED_ORIGINS=https://questlog.synthrack.studio,https://questlog.omnyist.com
-      DATABASE_URL=postgresql://questlog:questlog@synthcore-postgres:5432/questlog
+      DATABASE_URL=postgresql://questlog:questlog@synthcore-pgbouncer:6432/questlog
       REDIS_URL=redis://synthcore-redis:6379/2
       TWITCH_CLIENT_ID=$TWITCH_CLIENT_ID
       TWITCH_CLIENT_SECRET=$TWITCH_CLIENT_SECRET

@@ -8,7 +8,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://questlog:questlog@synthcore-postgres:5432/questlog
+      - DATABASE_URL=postgresql://questlog:questlog@synthcore-pgbouncer:6432/questlog
       - REDIS_URL=redis://synthcore-redis:6379/2
     ports:
       - "7176:7176"
@@ -40,7 +40,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://questlog:questlog@synthcore-postgres:5432/questlog
+      - DATABASE_URL=postgresql://questlog:questlog@synthcore-pgbouncer:6432/questlog
       - REDIS_URL=redis://synthcore-redis:6379/2
     networks:
       - default
@@ -56,7 +56,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql://questlog:questlog@synthcore-postgres:5432/questlog
+      - DATABASE_URL=postgresql://questlog:questlog@synthcore-pgbouncer:6432/questlog
       - REDIS_URL=redis://synthcore-redis:6379/2
     networks:
       - default
