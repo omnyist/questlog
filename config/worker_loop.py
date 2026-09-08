@@ -14,6 +14,7 @@ beats, applied one level down to the loop that calls them.
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from collections.abc import Callable
 
@@ -23,8 +24,6 @@ from config.heartbeat import beat_boot
 from config.heartbeat import beat_liveness
 from config.heartbeat import beat_work
 
-logger = logging.getLogger(__name__)
-
 
 def run_worker_loop(worker: str, interval: int, tick: Callable[[], None]) -> None:
     """Run `tick()` every `interval` seconds forever, with beats and connection hygiene.
@@ -33,7 +32,15 @@ def run_worker_loop(worker: str, interval: int, tick: Callable[[], None]) -> Non
     per-iteration state (e.g. the current time) computes it inside itself
     rather than receiving it here, so this stays a plain callable and not
     another thing every caller has to shape around.
+
+    Logs under `getLogger(worker)` rather than this module's own name, so
+    poll_steam_warframe's and warframe_upkeep's failures stay distinguishable
+    by logger name after both moved onto this shared loop (adversarial
+    review, 2026-09-08 pass 2) -- one shared `config.worker_loop` logger for
+    every caller would have made a per-worker alert rule or log filter unable
+    to tell them apart.
     """
+    logger = logging.getLogger(worker)
     beat_boot(worker)
     while True:
         # Liveness before the attempt, work after it succeeds -- fresh
@@ -47,5 +54,13 @@ def run_worker_loop(worker: str, interval: int, tick: Callable[[], None]) -> Non
             tick()
             beat_work(worker)
         except Exception:
+            # Both the logger (structured, ships wherever this project's
+            # LOGGING config routes ERROR) and stderr directly (so `docker
+            # logs` or an interactive run shows the failure even if logging
+            # handlers are misconfigured) -- poll_steam_warframe had both
+            # before this loop existed. Losing the stderr write in the
+            # refactor was an adversarial-review finding, not a deliberate
+            # simplification.
+            print(f"[{worker}] tick failed; retrying next interval", file=sys.stderr)
             logger.exception("[%s] tick failed; retrying next interval", worker)
         time.sleep(interval)
