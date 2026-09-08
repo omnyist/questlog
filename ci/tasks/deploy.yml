@@ -92,4 +92,4 @@ run:
 
       scp -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts env-payload Avalonstar@10.0.20.10:~/ci/deploys/questlog/.env
 
-      $SSH 'cd ~/ci/deploys/questlog && bash ci/deploy.sh && bash ci/verify.sh'
+      $SSH "cd ~/ci/deploys/questlog && GH_TOKEN='$GH_TOKEN' bash ci/deploy.sh && bash ci/verify.sh"
