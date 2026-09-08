@@ -8,6 +8,7 @@ import environ
 import sentry_sdk
 from sentry_sdk.scrubber import DEFAULT_DENYLIST
 from sentry_sdk.scrubber import EventScrubber
+from synthlib.django.db import production_database_extras
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -154,60 +155,17 @@ DATABASES = {
 # teardown, so leave it off for tests (and for SQLite, which rejects it).
 _UNDER_TEST = "pytest" in sys.modules
 
-
-def production_database_extras(engine: str, *, under_test: bool) -> dict:
-    """The DB config that ships to production — pure, so tests can see it.
-
-    Because the pool is off under pytest, everything in the production branch
-    is invisible to an ordinary test run: a fully green suite shipped a
-    crash-loop on 2026-08-22 (a `check` key colliding with the one Django
-    passes itself). tests/test_production_db_config.py asserts on this
-    function's output with under_test=False, which is the only way the shipped
-    branch gets looked at before prod does.
-
-    CONN_HEALTH_CHECKS does more than its name suggests: Django's postgresql
-    backend forwards it to psycopg_pool as the pool's `check` callback. Left
-    False, the pool validates nothing and serves connections killed by a
-    Postgres restart forever (the 2026-08-21 shared-Postgres restart).
-
-    Never put `check` in the pool options yourself — Django passes it, and
-    psycopg_pool rejects the duplicate on the first cursor.
-    """
-    if engine == "django.db.backends.sqlite3" or under_test:
-        return {}
-    return {
-        "CONN_HEALTH_CHECKS": True,
-        # min_size 1, not psycopg's default 4.
-        #
-        # `{"pool": True}` reads as "pooling on" and actually means a FIXED four
-        # connections: psycopg resolves max_size=None to max_size=min_size, so the pool
-        # never grows past four and never drops below it either. Every container pays
-        # four whether it serves one request a minute or none, which ties the rack's
-        # connection count to CONTAINER COUNT rather than to load — and this rack keeps
-        # splitting work into more, smaller containers.
-        #
-        # Measured 2026-08-30 on the shared cluster: 80 of 81 connections idle in every
-        # sample over 40s, against max_connections=100. synthhome alone held 36 across
-        # nine containers while committing 9M transactions at a concurrency of one.
-        #
-        # Same ceiling, a tenth of the floor. Idle connections above min_size are
-        # reclaimed after max_idle (600s), so a burst still gets four.
-        #
-        # DISABLE_SERVER_SIDE_CURSORS + prepare_threshold=None: required ahead
-        # of the pgbouncer migration (rollout plan,
-        # ~/.claude/plans/fluffy-mapping-phoenix.md, Phase 4). Transaction
-        # pooling can hand this connection's next query to a different
-        # backend than its last one, and server-side cursors and server-side
-        # prepared statements are both connection-local. Harmless against
-        # direct Postgres -- ships and deploys before the DATABASE_URL flip,
-        # as its own commit.
-        "DISABLE_SERVER_SIDE_CURSORS": True,
-        "OPTIONS": {"pool": {"min_size": 1, "max_size": 4}, "prepare_threshold": None},
-    }
-
-
+# min_size 1, not psycopg's default 4 -- see synthlib.django.db's own
+# docstring for the full reasoning. Pool sizing moved to synthlib
+# (2026-09-08, Phase 5) -- required kwargs, not a default, so this
+# module's own number stays visible at its own call site.
 DATABASES["default"].update(
-    production_database_extras(DATABASES["default"]["ENGINE"], under_test=_UNDER_TEST)
+    production_database_extras(
+        DATABASES["default"]["ENGINE"],
+        under_test=_UNDER_TEST,
+        pool_min_size=1,
+        pool_max_size=4,
+    )
 )
 
 # Password validation

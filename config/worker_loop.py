@@ -7,8 +7,10 @@ to be added by hand in both places in the same sitting (2026-09-08) -- neither
 command's `--loop` had it, both are long-lived processes with no request
 cycle to return the connection on their own, and a third worker copying the
 loop without copying the fix is the failure this collapses. A subclass of the
-enrollment-failure reasoning `config/heartbeat.py` already documents for
-beats, applied one level down to the loop that calls them.
+enrollment-failure reasoning `synthlib.django.heartbeat` documents for beats
+(the local `config/heartbeat.py` this used to import from was deleted
+2026-09-08, synthlib plan Phase 5), applied one level down to the loop that
+calls them.
 """
 
 from __future__ import annotations
@@ -19,10 +21,9 @@ import time
 from collections.abc import Callable
 
 from django.db import close_old_connections
-
-from config.heartbeat import beat_boot
-from config.heartbeat import beat_liveness
-from config.heartbeat import beat_work
+from synthlib.django.heartbeat import beat_boot
+from synthlib.django.heartbeat import beat_liveness
+from synthlib.django.heartbeat import beat_work
 
 
 def run_worker_loop(worker: str, interval: int, tick: Callable[[], None]) -> None:

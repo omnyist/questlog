@@ -7,8 +7,7 @@ from django.conf import settings
 from django.db import connection
 from django.http import HttpRequest
 from django.http import JsonResponse
-
-from config.heartbeat import KEY_PREFIX
+from synthlib.django.heartbeat import KEY_PREFIX
 
 
 def health_check(request: HttpRequest) -> JsonResponse:

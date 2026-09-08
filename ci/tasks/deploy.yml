@@ -21,13 +21,16 @@ params:
   WARFRAME_ACCOUNT_ID: ((questlog_warframe_account_id))
   API_KEY: ((questlog_api_key))
   SENTRY_DSN: ((questlog_sentry_dsn))
+  APP_ID: ((github_app_id))
+  PRIVATE_KEY: ((github_app_private_key))
+  INSTALLATION_ID: "159078769"
 
 run:
   path: sh
   args:
     - -ec
     - |
-      apk add --no-cache openssh-client rsync >/dev/null
+      apk add --no-cache openssh-client rsync openssl curl jq bash git >/dev/null
       mkdir -p ~/.ssh
       echo "$SSH_KEY" > ~/.ssh/id_ed25519
       chmod 600 ~/.ssh/id_ed25519
@@ -37,6 +40,22 @@ run:
       RSYNC_SSH="ssh -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts -o ConnectTimeout=10"
 
       rsync -a --delete -e "$RSYNC_SSH" repo/ Avalonstar@10.0.20.10:~/ci/deploys/questlog/
+
+      # Minted here, in the Concourse task -- ci/deploy.sh runs ON Saya and
+      # has no access to the App private key. Carried to Saya as a shell env
+      # var on the SSH invocation below, never through the env-payload/.env
+      # mechanism below: every service already wires .env into its runtime
+      # environment via env_file, and a token placed there would be readable
+      # via `docker inspect` indefinitely. docker compose's own
+      # `secrets: gh_token: environment: GH_TOKEN` picks this up
+      # automatically from ci/deploy.sh's process environment -- ci/deploy.sh
+      # itself needs no changes.
+      GIT_SSH_COMMAND="ssh -i ~/.ssh/id_ed25519 -o UserKnownHostsFile=~/.ssh/known_hosts -o ConnectTimeout=10" \
+        git clone --depth 1 -q Avalonstar@10.0.20.10:git/standards.git /tmp/standards
+      printf '%s' "$PRIVATE_KEY" > /tmp/app-key.pem
+      GH_TOKEN=$(bash /tmp/standards/ci/gh-app-token.sh "$APP_ID" "$INSTALLATION_ID" /tmp/app-key.pem synthlib)
+      rm -f /tmp/app-key.pem
+      rm -rf /tmp/standards
 
       # Compose's own .env parser re-interpolates $-references when it reads
       # this file back on Saya, so a literal $ inside a secret (SECRET_KEY's

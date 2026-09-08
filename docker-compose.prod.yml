@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      secrets:
+        - gh_token
     container_name: questlog-server
     restart: unless-stopped
     env_file:
@@ -35,6 +37,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      secrets:
+        - gh_token
     container_name: questlog-warframe
     restart: unless-stopped
     env_file:
@@ -51,6 +55,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      secrets:
+        - gh_token
     container_name: questlog-warframe-upkeep
     restart: unless-stopped
     env_file:
@@ -67,4 +73,13 @@ networks:
   default:
   synth:
     external: true
+
+secrets:
+  # Sourced from the shell environment on the SSH invocation that runs
+  # `docker compose build` (ci/deploy.sh), never from .env -- env_file above
+  # already wires every service's runtime environment, and a token placed
+  # there would be readable via `docker inspect` indefinitely, not just
+  # present during the build.
+  gh_token:
+    environment: GH_TOKEN
 
