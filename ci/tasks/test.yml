@@ -15,6 +15,12 @@ image_resource:
 inputs:
   - name: repo
 
+# Read-only: only used to `git clone` standards over SSH so doctrine-grep.sh
+# runs against the real, current rules. Same creds every deploy task carries.
+params:
+  SSH_KEY: ((saya_ssh_key))
+  KNOWN_HOSTS: ((saya_known_hosts))
+
 run:
   path: sh
   args:
