@@ -27,6 +27,7 @@ from __future__ import annotations
 import time
 
 from django.core.management.base import BaseCommand
+from django.db import close_old_connections
 
 from apps.profiles.warframe.tasks import poll_steam_warframe
 from config.heartbeat import beat_boot
@@ -61,6 +62,10 @@ class Command(BaseCommand):
             # rate-limited API key looks like.
             beat_liveness(WORKER)
             try:
+                # No request cycle, so nothing else returns this connection —
+                # the same gap as synthpatch-withings and synthhive-bot on
+                # 2026-09-07. Synchronous command; call directly.
+                close_old_connections()
                 poll_steam_warframe()
                 # The cycle completing IS the work. Not "a session transition
                 # was found" -- Bryan is not playing Warframe most of the time,

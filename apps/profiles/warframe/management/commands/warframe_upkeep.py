@@ -28,6 +28,7 @@ from datetime import datetime
 import redis
 from django.conf import settings
 from django.core.management.base import BaseCommand
+from django.db import close_old_connections
 
 from apps.profiles.warframe.tasks import check_warframe_staleness
 from apps.profiles.warframe.tasks import sync_catalog
@@ -103,6 +104,13 @@ class Command(BaseCommand):
             beat_liveness(WORKER)
             now = datetime.now(UTC)
             try:
+                # Almost every tick only touches Redis, so a connection held
+                # from process start could go dead and sit unnoticed for a
+                # full day before the staleness check next runs. Release it
+                # on every tick regardless — cheap when there is nothing to
+                # validate, and it is what makes the once-a-day ORM call
+                # trustworthy when it does fire.
+                close_old_connections()
                 self._maybe_run(client, now)
                 # The tick completing is the work. These jobs fire once a day
                 # and once a week, so beating only when one runs would report
