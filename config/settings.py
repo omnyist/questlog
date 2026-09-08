@@ -192,7 +192,17 @@ def production_database_extras(engine: str, *, under_test: bool) -> dict:
         #
         # Same ceiling, a tenth of the floor. Idle connections above min_size are
         # reclaimed after max_idle (600s), so a burst still gets four.
-        "OPTIONS": {"pool": {"min_size": 1, "max_size": 4}},
+        #
+        # DISABLE_SERVER_SIDE_CURSORS + prepare_threshold=None: required ahead
+        # of the pgbouncer migration (rollout plan,
+        # ~/.claude/plans/fluffy-mapping-phoenix.md, Phase 4). Transaction
+        # pooling can hand this connection's next query to a different
+        # backend than its last one, and server-side cursors and server-side
+        # prepared statements are both connection-local. Harmless against
+        # direct Postgres -- ships and deploys before the DATABASE_URL flip,
+        # as its own commit.
+        "DISABLE_SERVER_SIDE_CURSORS": True,
+        "OPTIONS": {"pool": {"min_size": 1, "max_size": 4}, "prepare_threshold": None},
     }
 
 
