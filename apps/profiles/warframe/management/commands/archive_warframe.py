@@ -2,6 +2,19 @@
 
 Single-phase, fully idempotent. Uses a short-lived Redis lock to prevent
 concurrent runs (the session-end poller invokes this command inline).
+
+`_run` is invoked via `asyncio.run()` from a plain sync `handle()`, so every
+`sync_to_async(..., thread_sensitive=True)` call below falls through to
+asgiref's process-wide `SyncToAsync.single_thread_executor` -- one OS thread,
+reused across every tick of `poll_steam_warframe --loop`, that `run_worker_loop`'s
+own `close_old_connections()` (called on the *loop's* thread) never touches:
+Django's connection registry is thread-local, and these are different threads.
+That stranded thread held a connection PgBouncer's transaction pooling can
+recycle out from under it, surfacing as `OperationalError: the connection is
+closed` (QUESTLOG-G, QUESTLOG-F) once questlog moved behind PgBouncer -- `
+prove_database()` releases and re-proves the connection from inside the same
+thread-sensitive context these calls run in, so it lands on the thread that
+actually needs it.
 """
 
 from __future__ import annotations
@@ -13,6 +26,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.core.management.base import CommandError
 from django.utils import timezone as django_tz
+from synthlib.django.db import prove_database
 
 from apps.integrations.warframe import WarframeAPIError
 from apps.integrations.warframe import WarframeClient
@@ -67,6 +81,8 @@ class Command(BaseCommand):
 
     async def _run(self, options: dict) -> None:
         from asgiref.sync import sync_to_async
+
+        await prove_database()
 
         account_id = options["account_id"] or settings.WARFRAME_ACCOUNT_ID
         platform = options["platform"] or settings.WARFRAME_PLATFORM or "pc"
