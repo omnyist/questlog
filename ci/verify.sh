@@ -50,8 +50,5 @@ timeout 60 sh -c 'until docker exec synthcore-postgres pg_isready -U questlog -d
 sleep 5
 
 docker compose -f docker-compose.prod.yml exec -T server uv run python manage.py collectstatic --noinput
-# Cleanup, not verification. Every synth service shares Saya's one Docker
-# daemon, and concurrent deploys race for it: the loser gets "a prune
-# operation is already running". That turned a healthy zenith deploy red on
-# 2026-09-06. Housekeeping must never decide whether a deploy passed.
-docker image prune -f || true
+# Image pruning moved to ci-ops' scheduled job (2026-09-11, p0094) -- see
+# conventions/deploy.md for why nine racing per-deploy prunes were the bug.
