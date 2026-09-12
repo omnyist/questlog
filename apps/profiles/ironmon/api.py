@@ -37,7 +37,7 @@ class IronMONStatsSchema(Schema):
     checkpoints: list[CheckpointStatSchema]
 
 
-class RunSchema(Schema):
+class IronMONRunSchema(Schema):
     seed_number: int
     challenge: str
     highest_checkpoint: str | None
@@ -123,7 +123,7 @@ def get_stats(request, challenge: str | None = None):
     )
 
 
-@router.get("/ironmon/runs", response=list[RunSchema])
+@router.get("/ironmon/runs", response=list[IronMONRunSchema])
 @paginate
 def list_runs(request, challenge: str | None = None):
     """Recent runs with highest checkpoint reached."""
@@ -133,7 +133,7 @@ def list_runs(request, challenge: str | None = None):
         runs = runs.filter(challenge__slug=challenge)
 
     return [
-        RunSchema(
+        IronMONRunSchema(
             seed_number=run.seed_number,
             challenge=run.challenge.name,
             highest_checkpoint=run.highest_checkpoint.name if run.highest_checkpoint else None,
