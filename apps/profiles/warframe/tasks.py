@@ -49,6 +49,16 @@ PLAYTIME_KEY = "questlog:steam:warframe_playtime_minutes"
 # Archive at most this often during an active session — conservative vs DE's
 # unofficial endpoint (the home IP also logs into the game). ~2 calls/hour.
 PERIODIC_INTERVAL = 1800  # 30 minutes
+# Swallowing an ISOLATED Steam blip is deliberate (see poll_steam_warframe).
+# Swallowing every tick of a SUSTAINED outage is not: it hides run_worker_loop's
+# work beat behind a real, ongoing failure with nothing left to page anyone
+# (2026-09-12 cross-module audit — the existing backstop, check_warframe_staleness,
+# only fires when played_recently=True, so a quiet stretch during an outage is
+# silent end-to-end). 3 consecutive ticks = 900s, matching this poller's own
+# 900s/3x work-beat threshold, so the raise and the beat going stale corroborate
+# at the same moment instead of one leading the other by an arbitrary margin.
+STEAM_POLL_FAILURE_THRESHOLD = 3
+STEAM_POLL_FAILURES_KEY = "questlog:steam:warframe_poll_failures"
 
 
 def poll_steam_warframe():
@@ -64,23 +74,39 @@ def poll_steam_warframe():
         logger.info("STEAM_API_KEY or STEAM_ID not set, skipping Warframe poll")
         return
 
+    redis_client = redis.from_url(settings.REDIS_URL)
+
     try:
         current_state = _check_current_state()
     except httpx.TransportError as exc:
-        # Transient network blip reaching Steam — skip this tick. The state key
-        # is left untouched, so a real session transition is still caught on a
-        # later poll. The daily staleness check is the backstop.
-        logger.warning("Steam poll skipped — transient network error: %s", exc)
+        # An isolated blip stays silent -- see STEAM_POLL_FAILURE_THRESHOLD.
+        # The state key is left untouched either way, so a real session
+        # transition is still caught on a later poll.
+        failures = _record_poll_failure(redis_client)
+        logger.warning(
+            "Steam poll skipped — transient network error (consecutive=%d): %s",
+            failures,
+            exc,
+        )
+        if failures >= STEAM_POLL_FAILURE_THRESHOLD:
+            raise
         return
     except httpx.HTTPStatusError as exc:
         # Upstream 5xx (Steam hiccup, e.g. 502) — skip like a network blip. A
         # 4xx is a real problem (bad API key, revoked access), so let it surface.
-        if exc.response.status_code >= 500:
-            logger.warning("Steam poll skipped — upstream %s", exc.response.status_code)
-            return
-        raise
+        if exc.response.status_code < 500:
+            raise
+        failures = _record_poll_failure(redis_client)
+        logger.warning(
+            "Steam poll skipped — upstream %s (consecutive=%d)",
+            exc.response.status_code,
+            failures,
+        )
+        if failures >= STEAM_POLL_FAILURE_THRESHOLD:
+            raise
+        return
 
-    redis_client = redis.from_url(settings.REDIS_URL)
+    _clear_poll_failures(redis_client)
 
     previous_raw = redis_client.get(STATE_KEY)
     previous_state = previous_raw.decode() if previous_raw else None
@@ -112,6 +138,22 @@ def poll_steam_warframe():
             {"steam_id": settings.STEAM_ID},
         )
         _run_archive(redis_client, "session_end", raise_on_error=True)
+
+
+def _record_poll_failure(redis_client) -> int:
+    """Consecutive Steam-poll failures, incremented and returned.
+
+    TTL matches STATE_KEY's: as long as poll_steam_warframe keeps ticking
+    (every 300s), the count survives between ticks; if the whole container is
+    down, no ticks happen anyway, so an expired counter can't hide anything.
+    """
+    count = redis_client.incr(STEAM_POLL_FAILURES_KEY)
+    redis_client.expire(STEAM_POLL_FAILURES_KEY, STATE_TTL)
+    return count
+
+
+def _clear_poll_failures(redis_client) -> None:
+    redis_client.delete(STEAM_POLL_FAILURES_KEY)
 
 
 def _maybe_periodic_archive(redis_client) -> None:
@@ -257,13 +299,20 @@ def check_warframe_staleness():
     )
 
 
-def sync_catalog():
+def sync_catalog() -> bool:
     """Refresh the WFCD item catalog weekly so newly-released frames classify.
 
     Idempotent — update_or_create on uniqueName. Logs and swallows errors so a
-    transient GitHub/network failure never crashes the beat worker.
+    transient GitHub/network failure never crashes the beat worker, but
+    returns whether it actually succeeded: warframe_upkeep's `_maybe_run`
+    marks the weekly slot done only on True, so a failed sync retries on the
+    next 60s tick instead of waiting a full ISO week (2026-09-12 cross-module
+    audit — the swallow here was correct, the caller treating a swallowed
+    failure as success wasn't).
     """
     try:
         call_command("sync_warframe_catalog")
     except Exception:  # noqa: BLE001
         logger.exception("sync_warframe_catalog failed")
+        return False
+    return True

@@ -35,12 +35,17 @@ class FakeRedis:
         self.d[key] = value
 
 
-def _run(redis, when: datetime) -> list[str]:
+def _run(redis, when: datetime, *, catalog_result: bool = True) -> list[str]:
     fired: list[str] = []
     mod = "apps.profiles.warframe.management.commands.warframe_upkeep"
+
+    def fake_sync_catalog():
+        fired.append("catalog")
+        return catalog_result
+
     with (
         patch(f"{mod}.check_warframe_staleness", lambda: fired.append("staleness")),
-        patch(f"{mod}.sync_catalog", lambda: fired.append("catalog")),
+        patch(f"{mod}.sync_catalog", fake_sync_catalog),
     ):
         Command()._maybe_run(redis, when)
     return fired
@@ -82,6 +87,22 @@ def test_the_weekly_sync_fires_again_the_following_week():
     r = FakeRedis()
     _run(r, datetime(2026, 9, 6, 5, 0, tzinfo=UTC))
     assert _run(r, datetime(2026, 9, 13, 5, 0, tzinfo=UTC)) == ["catalog"]
+
+
+def test_a_failed_catalog_sync_is_not_marked_done():
+    """sync_catalog swallows its own errors and returns False on one -- the
+    slot must not be marked ran, so the next 60s tick retries instead of
+    waiting a full ISO week (2026-09-12 cross-module audit)."""
+    r = FakeRedis()
+    assert _run(r, datetime(2026, 9, 6, 5, 0, tzinfo=UTC), catalog_result=False) == [
+        "catalog"
+    ]
+    # Still Sunday, same slot -- a failed sync must retry, not wait a week.
+    assert _run(r, datetime(2026, 9, 6, 6, 0, tzinfo=UTC), catalog_result=True) == [
+        "catalog"
+    ]
+    # That one succeeded and got marked -- no third fire the same week.
+    assert _run(r, datetime(2026, 9, 6, 7, 0, tzinfo=UTC)) == []
 
 
 def test_an_unreachable_redis_refuses_to_run_rather_than_risk_a_repeat():

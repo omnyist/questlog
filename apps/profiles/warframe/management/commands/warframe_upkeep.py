@@ -124,5 +124,9 @@ class Command(BaseCommand):
             period = f"{now.isocalendar().year}-W{now.isocalendar().week:02d}"
             if not _already_ran(client, "catalog", period):
                 logger.info("[Warframe] running weekly catalog sync for %s", period)
-                sync_catalog()
-                _mark_ran(client, "catalog", period)
+                # Only mark the slot done on success -- sync_catalog swallows
+                # its own errors and returns False on one, so a failed sync
+                # retries on the next 60s tick instead of waiting a full ISO
+                # week (2026-09-12 cross-module audit).
+                if sync_catalog():
+                    _mark_ran(client, "catalog", period)

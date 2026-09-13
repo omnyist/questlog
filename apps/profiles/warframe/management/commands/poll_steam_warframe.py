@@ -50,5 +50,8 @@ class Command(BaseCommand):
         # The cycle completing IS the work. Not "a session transition was
         # found" -- Bryan is not playing Warframe most of the time, and
         # gating the beat on a transition would report this worker dead for
-        # days at a stretch.
+        # days at a stretch. An isolated Steam blip still counts as
+        # completing; a SUSTAINED one doesn't -- poll_steam_warframe raises
+        # past STEAM_POLL_FAILURE_THRESHOLD consecutive failures, so the
+        # work beat (not liveness) goes stale for that case specifically.
         run_worker_loop(WORKER, options["interval"], poll_steam_warframe)

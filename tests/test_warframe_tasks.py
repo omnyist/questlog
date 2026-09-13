@@ -49,15 +49,15 @@ class TestComputeCompletion:
 
     def test_mastered_vs_partial_vs_absent(self):
         items = [
-            ("/w/maxed", "Primary", 30),     # 450k threshold
-            ("/w/partial", "Primary", 30),   # below threshold
+            ("/w/maxed", "Primary", 30),  # 450k threshold
+            ("/w/partial", "Primary", 30),  # below threshold
             ("/w/absent", "Secondary", 30),  # not in xp at all
-            ("/f/maxed", "Warframes", 30),   # 900k threshold
+            ("/f/maxed", "Warframes", 30),  # 900k threshold
         ]
         xp = {
-            "/w/maxed": 500_000,      # >= 450k -> mastered
-            "/w/partial": 100_000,    # < 450k -> not
-            "/f/maxed": 10_000_000,   # >= 900k -> mastered
+            "/w/maxed": 500_000,  # >= 450k -> mastered
+            "/w/partial": 100_000,  # < 450k -> not
+            "/f/maxed": 10_000_000,  # >= 900k -> mastered
         }
         result = compute_completion(xp, items)
         assert result["total_masterable"] == 4
@@ -92,8 +92,30 @@ class TestComputeRemaining:
         ("/w/maxed", "Maxed Rifle", "Primary", 0, 30, False, False, "Market", [], ""),
         ("/w/base", "Base Rifle", "Primary", 5, 30, False, False, "Market", [], ""),
         ("/f/frame", "Cool Frame", "Warframes", 8, 30, False, False, "Foundry", [], ""),
-        ("/w/vault", "Vaulted Prime", "Melee", 0, 30, True, True, "Void Relic", ["Prime"], "2020-01-01"),
-        ("/w/gated", "Gated Gun", "Secondary", 30, 30, False, False, "Kuva Lich", ["Kuva Lich"], ""),
+        (
+            "/w/vault",
+            "Vaulted Prime",
+            "Melee",
+            0,
+            30,
+            True,
+            True,
+            "Void Relic",
+            ["Prime"],
+            "2020-01-01",
+        ),
+        (
+            "/w/gated",
+            "Gated Gun",
+            "Secondary",
+            30,
+            30,
+            False,
+            False,
+            "Kuva Lich",
+            ["Kuva Lich"],
+            "",
+        ),
     ]
 
     def test_excludes_mastered_ranks_by_value(self):
@@ -108,8 +130,8 @@ class TestComputeRemaining:
 
     def test_equippable_flag(self):
         out = {r["name"]: r for r in compute_remaining({}, self.ITEMS, current_mr=27)}
-        assert out["Base Rifle"]["equippable"] is True       # req 5 <= 27
-        assert out["Gated Gun"]["equippable"] is False        # req 30 > 27
+        assert out["Base Rifle"]["equippable"] is True  # req 5 <= 27
+        assert out["Gated Gun"]["equippable"] is False  # req 30 > 27
         assert out["Vaulted Prime"]["vaulted"] is True
 
     def test_carries_judge_fields(self):
@@ -128,7 +150,10 @@ class TestComputeRemaining:
     def test_owned_and_progress(self):
         # Base Rifle at half its 450k Primary threshold -> owned, 50%.
         # Cool Frame with no affinity -> not owned, 0%.
-        out = {r["name"]: r for r in compute_remaining({"/w/base": 225_000}, self.ITEMS, current_mr=27)}
+        out = {
+            r["name"]: r
+            for r in compute_remaining({"/w/base": 225_000}, self.ITEMS, current_mr=27)
+        }
         assert out["Base Rifle"]["owned"] is True
         assert out["Base Rifle"]["mastery_progress"] == 50
         assert out["Cool Frame"]["owned"] is False
@@ -137,21 +162,35 @@ class TestComputeRemaining:
 
 class TestAcquisitionClassifier:
     def test_kuva_by_name(self):
-        assert _acquisition({"name": "Kuva Bramma", "tags": ["Grineer", "Kuva Lich"]}) == "Kuva Lich"
+        assert (
+            _acquisition({"name": "Kuva Bramma", "tags": ["Grineer", "Kuva Lich"]})
+            == "Kuva Lich"
+        )
 
     def test_coda_compound_name_over_infested_tag(self):
         # WFCD tags this only "Infested"; the name is authoritative.
-        assert _acquisition({"name": "Dual Coda Torxica", "tags": ["Infested"]}) == "Technocyte Coda"
+        assert (
+            _acquisition({"name": "Dual Coda Torxica", "tags": ["Infested"]})
+            == "Technocyte Coda"
+        )
 
     def test_tenet_defaults_to_sister(self):
-        assert _acquisition({"name": "Tenet Tetra", "tags": ["Tenet"]}) == "Sister of Parvos"
+        assert (
+            _acquisition({"name": "Tenet Tetra", "tags": ["Tenet"]})
+            == "Sister of Parvos"
+        )
 
     def test_tenet_holokey_special_case(self):
-        assert _acquisition({"name": "Tenet Livia", "tags": ["Tenet"]}) == "Corrupted Holokey"
+        assert (
+            _acquisition({"name": "Tenet Livia", "tags": ["Tenet"]})
+            == "Corrupted Holokey"
+        )
 
     def test_syndicate_specific_beats_generic(self):
         assert (
-            _acquisition({"name": "Synoid Gammacor", "tags": ["Syndicate", "Cephalon Suda"]})
+            _acquisition(
+                {"name": "Synoid Gammacor", "tags": ["Syndicate", "Cephalon Suda"]}
+            )
             == "Cephalon Suda"
         )
 
@@ -161,29 +200,53 @@ class TestAcquisitionClassifier:
         assert _acquisition(item) == "Void Relic"
 
     def test_pet_kubrow_incubator(self):
-        item = {"name": "Huras Kubrow", "category": "Pets", "tags": [],
-                "uniqueName": "/Lotus/.../FurtiveKubrowPetPowerSuit"}
+        item = {
+            "name": "Huras Kubrow",
+            "category": "Pets",
+            "tags": [],
+            "uniqueName": "/Lotus/.../FurtiveKubrowPetPowerSuit",
+        }
         assert _acquisition(item) == "Incubator"
 
     def test_pet_vulpaphyla_deimos(self):
-        item = {"name": "Panzer Vulpaphyla", "category": "Pets", "tags": [],
-                "uniqueName": "/Lotus/.../ArmoredInfestedCatbrowPetPowerSuit"}
+        item = {
+            "name": "Panzer Vulpaphyla",
+            "category": "Pets",
+            "tags": [],
+            "uniqueName": "/Lotus/.../ArmoredInfestedCatbrowPetPowerSuit",
+        }
         assert _acquisition(item) == "Deimos (Son)"
 
     def test_pet_moa_legs_over_foundry(self):
         # MOAs have build recipes; the pet check must win over Foundry.
-        item = {"name": "Para Moa", "category": "Pets", "tags": [], "components": [1],
-                "uniqueName": "/Lotus/.../MoaPetHeadPara"}
+        item = {
+            "name": "Para Moa",
+            "category": "Pets",
+            "tags": [],
+            "components": [1],
+            "uniqueName": "/Lotus/.../MoaPetHeadPara",
+        }
         assert _acquisition(item) == "Legs (Fortuna)"
 
     def test_pet_hound_sisters(self):
-        item = {"name": "Hec Hound", "category": "Pets", "tags": [], "components": [1],
-                "uniqueName": "/Lotus/.../ZanukaPetPartHeadC"}
+        item = {
+            "name": "Hec Hound",
+            "category": "Pets",
+            "tags": [],
+            "components": [1],
+            "uniqueName": "/Lotus/.../ZanukaPetPartHeadC",
+        }
         assert _acquisition(item) == "Sister of Parvos"
 
     def test_market_and_foundry_fallbacks(self):
-        assert _acquisition({"name": "Soma", "tags": ["Tenno"], "marketCost": 1}) == "Market"
-        assert _acquisition({"name": "Some Built Thing", "tags": [], "components": [1]}) == "Foundry"
+        assert (
+            _acquisition({"name": "Soma", "tags": ["Tenno"], "marketCost": 1})
+            == "Market"
+        )
+        assert (
+            _acquisition({"name": "Some Built Thing", "tags": [], "components": [1]})
+            == "Foundry"
+        )
         assert _acquisition({"name": "Mk1-Braton", "tags": ["Tenno"]}) == "Market"
 
 
@@ -198,7 +261,11 @@ class TestSummarizeByAcquisition:
         out = summarize_by_acquisition(items)
         # Sorted by mastery_points desc: Kuva (8000), Unknown (6000), Market (3000)
         assert [g["acquisition"] for g in out] == ["Kuva Lich", "Unknown", "Market"]
-        assert out[0] == {"acquisition": "Kuva Lich", "count": 2, "mastery_points": 8000}
+        assert out[0] == {
+            "acquisition": "Kuva Lich",
+            "count": 2,
+            "mastery_points": 8000,
+        }
         assert out[1]["acquisition"] == "Unknown"  # blank acquisition bucketed
 
     def test_empty(self):
@@ -230,24 +297,84 @@ class TestStalenessAlertNeeded:
         assert staleness_alert_needed(just_over, NOW, played_recently=True) is True
 
 
+class FakeFailureRedis:
+    """Minimal redis stand-in covering the failure counter plus STATE_KEY."""
+
+    def __init__(self):
+        self.counts: dict[str, int] = {}
+        self.values: dict[str, bytes] = {}
+
+    def incr(self, key):
+        self.counts[key] = self.counts.get(key, 0) + 1
+        return self.counts[key]
+
+    def expire(self, key, ttl):
+        pass
+
+    def delete(self, key):
+        self.counts.pop(key, None)
+
+    def get(self, key):
+        return self.values.get(key)
+
+    def set(self, key, value, ex=None):
+        self.values[key] = str(value).encode()
+
+
 class TestPollSteamWarframe:
     @pytest.fixture(autouse=True)
     def _steam_configured(self, settings):
         settings.STEAM_API_KEY = "test-key"
         settings.STEAM_ID = "76561198009545200"
 
-    def test_transient_steam_error_skips_tick(self, monkeypatch):
-        # A network blip reaching Steam must not raise (no Sentry noise) and
-        # must not touch Redis state — the transition is caught on a later poll.
+    def test_transient_steam_error_skips_tick_below_threshold(self, monkeypatch):
+        # An isolated blip must not raise (no Sentry noise) and must not touch
+        # the session-transition state key -- only the failure counter, so a
+        # real transition is still caught on a later poll.
         def boom():
             raise httpx.ConnectTimeout("connect timed out")
 
-        redis_factory = MagicMock()
+        fake_redis = FakeFailureRedis()
         monkeypatch.setattr(tasks, "_check_current_state", boom)
-        monkeypatch.setattr(tasks.redis, "from_url", redis_factory)
+        monkeypatch.setattr(tasks.redis, "from_url", lambda *a, **k: fake_redis)
 
         assert poll_steam_warframe() is None
-        redis_factory.assert_not_called()
+        assert tasks.STATE_KEY not in fake_redis.values
+        assert fake_redis.counts[tasks.STEAM_POLL_FAILURES_KEY] == 1
+
+    def test_sustained_steam_outage_raises_past_the_threshold(self, monkeypatch):
+        # A single blip stays silent; a SUSTAINED one must stop the tick from
+        # completing so run_worker_loop's work beat goes stale for it --
+        # otherwise a multi-day outage during a quiet (not-playing) stretch
+        # pages nobody, since check_warframe_staleness only fires when
+        # played_recently=True (2026-09-12 cross-module audit).
+        def boom():
+            raise httpx.ConnectTimeout("connect timed out")
+
+        fake_redis = FakeFailureRedis()
+        monkeypatch.setattr(tasks, "_check_current_state", boom)
+        monkeypatch.setattr(tasks.redis, "from_url", lambda *a, **k: fake_redis)
+
+        for _ in range(tasks.STEAM_POLL_FAILURE_THRESHOLD - 1):
+            assert poll_steam_warframe() is None
+
+        with pytest.raises(httpx.ConnectTimeout):
+            poll_steam_warframe()
+
+    def test_recovery_resets_the_failure_count(self, monkeypatch):
+        fake_redis = FakeFailureRedis()
+
+        def boom():
+            raise httpx.ConnectTimeout("connect timed out")
+
+        monkeypatch.setattr(tasks, "_check_current_state", boom)
+        monkeypatch.setattr(tasks.redis, "from_url", lambda *a, **k: fake_redis)
+        poll_steam_warframe()
+        assert fake_redis.counts[tasks.STEAM_POLL_FAILURES_KEY] == 1
+
+        monkeypatch.setattr(tasks, "_check_current_state", lambda: "not_playing")
+        poll_steam_warframe()
+        assert tasks.STEAM_POLL_FAILURES_KEY not in fake_redis.counts
 
     def test_unexpected_error_propagates(self, monkeypatch):
         # Non-network failures are real bugs and should still surface.
@@ -260,17 +387,17 @@ class TestPollSteamWarframe:
         with pytest.raises(ValueError, match="not a network problem"):
             poll_steam_warframe()
 
-    def test_upstream_5xx_skips_tick(self, monkeypatch):
+    def test_upstream_5xx_skips_tick_below_threshold(self, monkeypatch):
         # A Steam 502 is a transient upstream hiccup — skip like a network blip.
         def boom():
             raise _steam_http_error(502)
 
-        redis_factory = MagicMock()
+        fake_redis = FakeFailureRedis()
         monkeypatch.setattr(tasks, "_check_current_state", boom)
-        monkeypatch.setattr(tasks.redis, "from_url", redis_factory)
+        monkeypatch.setattr(tasks.redis, "from_url", lambda *a, **k: fake_redis)
 
         assert poll_steam_warframe() is None
-        redis_factory.assert_not_called()
+        assert fake_redis.counts[tasks.STEAM_POLL_FAILURES_KEY] == 1
 
     def test_upstream_4xx_propagates(self, monkeypatch):
         # A 4xx (e.g. revoked API key) is a real problem; don't swallow it.
@@ -284,10 +411,31 @@ class TestPollSteamWarframe:
             poll_steam_warframe()
 
 
+class TestSyncCatalog:
+    def test_success_returns_true(self, monkeypatch):
+        monkeypatch.setattr(tasks, "call_command", MagicMock())
+        assert tasks.sync_catalog() is True
+
+    def test_a_swallowed_failure_returns_false(self, monkeypatch):
+        # warframe_upkeep's _maybe_run only marks the weekly slot done on
+        # True -- a swallowed exception must be distinguishable from success,
+        # or a failed sync silently waits a full ISO week to retry
+        # (2026-09-12 cross-module audit).
+        def boom(*args, **kwargs):
+            raise RuntimeError("GitHub is down")
+
+        monkeypatch.setattr(tasks, "call_command", boom)
+        assert tasks.sync_catalog() is False
+
+
 def _steam_http_error(status_code: int) -> httpx.HTTPStatusError:
-    request = httpx.Request("GET", "https://api.steampowered.com/x?key=SECRET&steamids=1")
+    request = httpx.Request(
+        "GET", "https://api.steampowered.com/x?key=SECRET&steamids=1"
+    )
     response = httpx.Response(status_code, request=request)
-    return httpx.HTTPStatusError(f"Server error '{status_code}'", request=request, response=response)
+    return httpx.HTTPStatusError(
+        f"Server error '{status_code}'", request=request, response=response
+    )
 
 
 class TestPlayedSinceLastCheck:
